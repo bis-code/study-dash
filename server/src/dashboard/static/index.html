@@ -1,4 +1,125 @@
 <!DOCTYPE html>
-<html><head><title>StudyDash</title></head>
-<body><h1>StudyDash</h1><p>Dashboard loading...</p></body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StudyDash</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
+</head>
+<body>
+
+  <!-- Desktop sidebar (hidden on mobile) -->
+  <div id="desktop-sidebar">
+    <div class="sidebar-inner">
+      <h1 style="font-size:18px;font-weight:700;color:var(--accent);margin-bottom:12px;">StudyDash</h1>
+      <div id="sidebar-subjects" class="subject-switcher"></div>
+      <div class="progress-bar" style="margin-bottom:14px;">
+        <div id="sidebar-progress-fill" class="progress-fill" style="width:0%"></div>
+        <span id="sidebar-progress-text" class="progress-text">0 / 0 topics</span>
+      </div>
+      <div id="sidebar-phases"></div>
+    </div>
+    <div class="sidebar-footer">
+      <span class="sse-dot disconnected" id="sse-dot"></span>
+      <kbd>Ctrl+K</kbd> Search
+    </div>
+  </div>
+
+  <div class="page-container">
+
+    <!-- ==================== PAGE: HOME ==================== -->
+    <div id="page-home" class="page active">
+      <div class="page-header">
+        <h1>StudyDash</h1>
+      </div>
+      <div id="home-subjects" class="subject-switcher"></div>
+      <div class="progress-bar">
+        <div id="home-progress-fill" class="progress-fill" style="width:0%"></div>
+        <span id="home-progress-text" class="progress-text">0 / 0 topics</span>
+      </div>
+      <div id="home-stats" class="stats-grid"></div>
+      <div class="section-divider">Recently Active</div>
+      <div id="home-recent"></div>
+    </div>
+
+    <!-- ==================== PAGE: TOPICS ==================== -->
+    <div id="page-topics" class="page">
+      <div class="page-header">
+        <h1>Topics</h1>
+      </div>
+      <div id="topics-subjects" class="subject-switcher"></div>
+      <div id="topics-phases"></div>
+    </div>
+
+    <!-- ==================== PAGE: TOPIC DETAIL ==================== -->
+    <div id="page-topic" class="page">
+      <button class="back-btn" onclick="showPage('topics')">&larr; Back to Topics</button>
+      <div class="topic-title-row">
+        <h2 id="topic-name"></h2>
+        <span id="topic-status" class="badge"></span>
+      </div>
+      <p id="topic-desc" class="topic-desc"></p>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="qa" onclick="switchTab('qa')">Q&amp;A</button>
+        <button class="tab-btn" data-tab="viz" onclick="switchTab('viz')">Visualize</button>
+        <button class="tab-btn" data-tab="exercises" onclick="switchTab('exercises')">Exercises</button>
+        <button class="tab-btn" data-tab="resources" onclick="switchTab('resources')">Resources</button>
+      </div>
+      <div id="tab-qa" class="tab-panel active"></div>
+      <div id="tab-viz" class="tab-panel"></div>
+      <div id="tab-exercises" class="tab-panel"></div>
+      <div id="tab-resources" class="tab-panel"></div>
+    </div>
+
+    <!-- ==================== PAGE: SEARCH ==================== -->
+    <div id="page-search" class="page">
+      <div class="page-header">
+        <h1>Search</h1>
+      </div>
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search questions, answers, notes..." autocomplete="off">
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+  </div>
+
+  <!-- Mobile bottom nav -->
+  <nav class="mobile-nav">
+    <button class="nav-btn active" data-page="home" onclick="showPage('home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </button>
+    <button class="nav-btn" data-page="topics" onclick="showPage('topics')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      Topics
+    </button>
+    <button class="nav-btn" data-page="search" onclick="showPage('search')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      Search
+    </button>
+  </nav>
+
+  <!-- Search modal (desktop Ctrl+K) -->
+  <div id="search-modal" class="modal hidden">
+    <div class="modal-backdrop" onclick="closeSearchModal()"></div>
+    <div class="modal-content">
+      <input id="modal-search-input" type="text" placeholder="Search questions, answers, notes..." autocomplete="off">
+      <div id="modal-search-results" class="modal-results"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
 </html>
