@@ -143,7 +143,7 @@ export class CurriculumService {
 
   setTopicStatus(topicId: number, status: Topic['status']): void {
     this.db.raw
-      .prepare<[string, string, number]>(
+      .prepare<[string, number]>(
         "UPDATE topics SET status = ?, updated_at = datetime('now') WHERE id = ?",
       )
       .run(status, topicId);
