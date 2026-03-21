@@ -33,7 +33,7 @@ export class QAService {
       .all(topicId);
   }
 
-  search(query: string): Pick<Entry, 'id' | 'topic_id' | 'kind' | 'content' | 'created_at'>[] {
+  search(query: string): { id: number; topic_id: number; kind: string; content: string; created_at: string }[] {
     return this.db.raw
       .prepare<
         [string],
