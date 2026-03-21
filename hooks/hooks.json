@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "learn_mark_done",
+        "hooks": [{
+          "type": "prompt",
+          "prompt": "The user just completed a topic. Generate 2-3 exercises for this topic using learn_create_exercise. Include at least one coding exercise and one quiz. Match the difficulty to the topic content."
+        }]
+      },
+      {
+        "matcher": "learn_log_answer",
+        "hooks": [{
+          "type": "prompt",
+          "prompt": "You just logged an answer. If the topic would benefit from a visual step-through diagram, create one with learn_create_viz using viz primitives (viz-box, viz-arrow, viz-slot, viz-select-case). Check auto_viz setting first. If off, ask the user."
+        }]
+      }
+    ],
+    "PreCompact": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "prompt",
+        "prompt": "Before compaction, note the active subject and topic so you can restore context after compaction. Use learn_get_progress to check current state."
+      }]
+    }]
+  }
+}
