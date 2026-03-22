@@ -5,11 +5,11 @@ A Claude Code plugin for structured learning on any subject. Import curricula fr
 ## Install
 
 ```bash
-# Add the marketplace
-/plugin marketplace add bis-code/study-dash
+# Add the bis-code marketplace (one-time)
+/plugin marketplace add bis-code/claude-plugins
 
 # Install the plugin
-/plugin install study-dash@bis-code-study-dash
+/plugin install study-dash@bis-code
 ```
 
 ## How It Works
