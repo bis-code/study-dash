@@ -1,10 +1,14 @@
 {
   "name": "study-dash-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "dist/index.js",
-  "bin": { "study-dash": "dist/index.js" },
-  "files": ["dist"],
+  "bin": {
+    "study-dash": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
     "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle.mjs --external:better-sqlite3 --external:zod --external:@modelcontextprotocol/sdk --loader:.html=text --loader:.css=text --loader:.js=text",
