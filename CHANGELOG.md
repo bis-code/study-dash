@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.1...study-dash-v0.2.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* commit bundle.mjs so plugin installs work from GitHub clone ([a41a6e8](https://github.com/bis-code/study-dash/commit/a41a6e8e344938e160598c05b0142ec0cda24add))
+
 ## [0.2.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.0...study-dash-v0.2.1) (2026-03-23)
 
 
