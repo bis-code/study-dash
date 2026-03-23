@@ -43,6 +43,15 @@ export interface Visualization {
   created_at: string;
 }
 
+export interface Resource {
+  id: number;
+  topic_id: number;
+  title: string;
+  url: string;
+  source: 'manual' | 'auto' | 'import';
+  created_at: string;
+}
+
 export interface VizStep {
   html: string;
   description: string;

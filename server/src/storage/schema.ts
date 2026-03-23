@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS exercise_results (
 
 CREATE INDEX IF NOT EXISTS idx_results_exercise ON exercise_results(exercise_id);
 
+CREATE TABLE IF NOT EXISTS resources (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic_id   INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  title      TEXT    NOT NULL DEFAULT '',
+  url        TEXT    NOT NULL DEFAULT '',
+  source     TEXT    NOT NULL DEFAULT 'manual'
+               CHECK (source IN ('manual','auto','import')),
+  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_resources_topic ON resources(topic_id);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
