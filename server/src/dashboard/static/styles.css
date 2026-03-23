@@ -1029,3 +1029,53 @@ kbd {
   #desktop-sidebar { display: none !important; }
   .page-container { display: contents; }
 }
+
+/* ===== RESOURCES ===== */
+.resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resource-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.resource-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.resource-title {
+  font-weight: 500;
+}
+
+.resource-url {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== EXERCISE EXPAND UX ===== */
+.exercise-header {
+  cursor: pointer;
+}
+
+.exercise-header:hover {
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+}
+
+.exercise-card.open .exercise-expand-icon {
+  transform: rotate(180deg);
+}

@@ -700,8 +700,10 @@ function renderExercisesTab() {
 }
 
 function toggleExercise(index) {
-  const detail = document.getElementById(`exercise-detail-${index}`);
+  const detail = document.getElementById('exercise-detail-' + index);
+  const card = detail ? detail.closest('.exercise-card') : null;
   if (detail) detail.classList.toggle('open');
+  if (card) card.classList.toggle('open');
 }
 
 function selectQuizOption(el) {

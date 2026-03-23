@@ -103,6 +103,17 @@ CREATE TABLE IF NOT EXISTS exercise_results (
 
 CREATE INDEX IF NOT EXISTS idx_results_exercise ON exercise_results(exercise_id);
 
+CREATE TABLE IF NOT EXISTS resources (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic_id   INTEGER NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  title      TEXT    NOT NULL DEFAULT '',
+  url        TEXT    NOT NULL DEFAULT '',
+  source     TEXT    NOT NULL DEFAULT 'manual'
+               CHECK (source IN ('manual','auto','import')),
+  created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_resources_topic ON resources(topic_id);
+
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL DEFAULT ''
@@ -450,8 +461,8 @@ ${description}`;
       });
       stdout = result.stdout;
       stderr = result.stderr;
-    } catch (err5) {
-      const execErr = err5;
+    } catch (err6) {
+      const execErr = err6;
       stdout = execErr.stdout ?? "";
       stderr = execErr.stderr ?? "";
       exitCode = execErr.code ?? 1;
@@ -542,6 +553,39 @@ ${description}`;
          JOIN topics t ON t.phase_id = p.id
          WHERE t.id = ?`
     ).get(topicId);
+  }
+};
+
+// src/services/resources.ts
+var ResourceService = class {
+  constructor(db2) {
+    this.db = db2;
+  }
+  addResource(topicId, title, url, source = "manual") {
+    const result = this.db.raw.prepare(
+      "INSERT INTO resources (topic_id, title, url, source) VALUES (?, ?, ?, ?)"
+    ).run(topicId, title, url, source);
+    return this.db.raw.prepare("SELECT * FROM resources WHERE id = ?").get(result.lastInsertRowid);
+  }
+  listForTopic(topicId) {
+    return this.db.raw.prepare(
+      "SELECT * FROM resources WHERE topic_id = ? ORDER BY created_at ASC, id ASC"
+    ).all(topicId);
+  }
+  importResources(resources) {
+    const insert = this.db.raw.prepare(
+      "INSERT INTO resources (topic_id, title, url, source) VALUES (?, ?, ?, ?)"
+    );
+    const tx = this.db.raw.transaction((items) => {
+      for (const r of items) {
+        insert.run(r.topic_id, r.title, r.url, "import");
+      }
+      return items.length;
+    });
+    return tx(resources);
+  }
+  deleteResource(id) {
+    this.db.raw.prepare("DELETE FROM resources WHERE id = ?").run(id);
   }
 };
 
@@ -917,6 +961,64 @@ function registerExerciseTools(server2, svc, sessions2, notify2) {
   );
 }
 
+// src/tools/resources.ts
+import { z as z5 } from "zod";
+function getSession5(sessions2, sessionId) {
+  const key = sessionId || "_default";
+  if (!sessions2.has(key)) {
+    sessions2.set(key, { subjectId: null, topicId: null });
+  }
+  return sessions2.get(key);
+}
+function err5(text) {
+  return { content: [{ type: "text", text }], isError: true };
+}
+function ok5(text) {
+  return { content: [{ type: "text", text }] };
+}
+function registerResourceTools(server2, svc, sessions2, notify2) {
+  server2.tool(
+    "learn_add_resource",
+    "Add a reference link to the active topic (or a specific topic by ID)",
+    {
+      title: z5.string().describe("Resource title"),
+      url: z5.string().describe("Resource URL"),
+      topic_id: z5.number().optional().describe("Topic ID (defaults to active topic)"),
+      session_id: z5.string().optional()
+    },
+    async ({ title, url, topic_id, session_id }) => {
+      const tid = topic_id ?? getSession5(sessions2, session_id).topicId;
+      if (tid === null) {
+        return err5("No active topic. Use learn_set_topic first or provide topic_id.");
+      }
+      const resource = svc.addResource(tid, title, url, "manual");
+      notify2();
+      return ok5(`Added resource "${resource.title}" (id=${resource.id}) to topic ${tid}`);
+    }
+  );
+  server2.tool(
+    "learn_import_resources",
+    "Bulk import resource links from a JSON array of {topic_id, title, url} objects",
+    {
+      resources_json: z5.string().describe("JSON array of {topic_id: number, title: string, url: string}")
+    },
+    async ({ resources_json }) => {
+      let resources;
+      try {
+        resources = JSON.parse(resources_json);
+      } catch {
+        return err5("Invalid JSON");
+      }
+      if (!Array.isArray(resources)) {
+        return err5("Expected a JSON array");
+      }
+      const count = svc.importResources(resources);
+      notify2();
+      return ok5(`Imported ${count} resources`);
+    }
+  );
+}
+
 // src/dashboard/server.ts
 import http from "node:http";
 
@@ -935,7 +1037,7 @@ function parseBody(req) {
     req.on("end", () => {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString()));
-      } catch (err5) {
+      } catch (err6) {
         reject(new Error("Invalid JSON body"));
       }
     });
@@ -970,7 +1072,7 @@ function handlePhases(curriculumSvc2) {
     writeJSON(res, phases);
   };
 }
-function handleTopic(curriculumSvc2, qaSvc2) {
+function handleTopic(curriculumSvc2, qaSvc2, resourceSvc2) {
   return (req, res) => {
     const id = extractId(req.url ?? "", "/api/topics/");
     if (id === null) {
@@ -983,7 +1085,19 @@ function handleTopic(curriculumSvc2, qaSvc2) {
       return;
     }
     const entries = qaSvc2.listEntries(id);
-    writeJSON(res, { ...topic, entries });
+    const resources = resourceSvc2.listForTopic(id);
+    writeJSON(res, { ...topic, entries, resources });
+  };
+}
+function handleTopicResources(resourceSvc2) {
+  return (req, res) => {
+    const id = extractId(req.url ?? "", "/api/topics/");
+    if (id === null) {
+      writeError(res, 400, "Invalid topic ID");
+      return;
+    }
+    const resources = resourceSvc2.listForTopic(id);
+    writeJSON(res, resources);
   };
 }
 function handleTopicViz(vizSvc2) {
@@ -1018,8 +1132,8 @@ function handleRunTests(exerciseSvc2) {
     try {
       const results = await exerciseSvc2.runTests(id);
       writeJSON(res, results);
-    } catch (err5) {
-      const msg = err5 instanceof Error ? err5.message : String(err5);
+    } catch (err6) {
+      const msg = err6 instanceof Error ? err6.message : String(err6);
       writeError(res, 500, msg);
     }
   };
@@ -1039,8 +1153,8 @@ function handleSubmitQuiz(exerciseSvc2) {
       }
       const result = exerciseSvc2.submitQuiz(id, body.answers);
       writeJSON(res, result);
-    } catch (err5) {
-      const msg = err5 instanceof Error ? err5.message : String(err5);
+    } catch (err6) {
+      const msg = err6 instanceof Error ? err6.message : String(err6);
       writeError(res, 500, msg);
     }
   };
@@ -1056,8 +1170,8 @@ function handleSearch(qaSvc2) {
     try {
       const results = qaSvc2.search(query);
       writeJSON(res, results);
-    } catch (err5) {
-      const msg = err5 instanceof Error ? err5.message : String(err5);
+    } catch (err6) {
+      const msg = err6 instanceof Error ? err6.message : String(err6);
       writeError(res, 500, msg);
     }
   };
@@ -1217,6 +1331,7 @@ const state = {
   topicData: null,
   topicViz: [],
   topicExercises: [],
+  topicResources: [],
   searchTimeout: null,
   vizIndex: 0,
   vizStep: 0,
@@ -1562,21 +1677,24 @@ async function selectTopic(id) {
   state.activeTopic = id;
   state.activeTab = 'qa';
 
-  // Fetch topic detail, viz, and exercises in parallel
+  // Fetch topic detail, viz, exercises, and resources in parallel
   try {
-    const [topicData, viz, exercises] = await Promise.all([
+    const [topicData, viz, exercises, resources] = await Promise.all([
       api(\`/api/topics/\${id}\`),
       api(\`/api/topics/\${id}/viz\`).catch(() => []),
       api(\`/api/topics/\${id}/exercises\`).catch(() => []),
+      api(\`/api/topics/\${id}/resources\`).catch(() => []),
     ]);
 
     state.topicData = topicData;
     state.topicViz = viz || [];
     state.topicExercises = exercises || [];
+    state.topicResources = resources || [];
   } catch {
     state.topicData = null;
     state.topicViz = [];
     state.topicExercises = [];
+    state.topicResources = [];
   }
 
   // Update sidebar active state
@@ -1890,8 +2008,10 @@ function renderExercisesTab() {
 }
 
 function toggleExercise(index) {
-  const detail = document.getElementById(\`exercise-detail-\${index}\`);
+  const detail = document.getElementById('exercise-detail-' + index);
+  const card = detail ? detail.closest('.exercise-card') : null;
   if (detail) detail.classList.toggle('open');
+  if (card) card.classList.toggle('open');
 }
 
 function selectQuizOption(el) {
@@ -1978,29 +2098,22 @@ function renderResourcesTab() {
   const container = document.getElementById('tab-resources');
   if (!container) return;
 
-  const data = state.topicData;
-  if (!data) {
-    container.innerHTML = \`<div class="empty-state"><p>No resources available</p></div>\`;
+  const resources = state.topicResources || [];
+
+  if (resources.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No resources yet</p><p class="text-muted">Ask Claude to add reference links for this topic</p></div>';
     return;
   }
 
-  const entries = data.entries || [];
-  const questions = entries.filter(e => e.kind === 'question').length;
-  const answers = entries.filter(e => e.kind === 'answer').length;
-  const notes = entries.filter(e => e.kind === 'note').length;
-
-  container.innerHTML = \`
-    \${data.description ? \`<div class="exercise-card"><div style="padding:4px 0"><strong>Description</strong></div><p class="exercise-desc">\${escapeHtml(data.description)}</p></div>\` : ''}
-    <div class="exercise-card">
-      <div style="padding:4px 0"><strong>Content Summary</strong></div>
-      <div class="exercise-meta" style="margin-top:8px">
-        <span>Questions: \${questions}</span>
-        <span>Answers: \${answers}</span>
-        <span>Notes: \${notes}</span>
-        <span>Visualizations: \${state.topicViz.length}</span>
-        <span>Exercises: \${state.topicExercises.length}</span>
-      </div>
-    </div>\`;
+  let html = '<div class="resources-list">';
+  for (const r of resources) {
+    html += '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" class="resource-card">' +
+      '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
+      '<span class="resource-url">' + escapeHtml(r.url) + '</span>' +
+      '</a>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 // --- Navigation ---
@@ -2095,7 +2208,7 @@ document.addEventListener('keydown', (e) => {
 `;
 
 // src/dashboard/static/styles.css
-var styles_default = "/* ===== CSS VARIABLES (Dark Theme) ===== */\n:root {\n  --bg: #0d1117;\n  --bg-secondary: #161b22;\n  --bg-tertiary: #21262d;\n  --border: #30363d;\n  --text: #e6edf3;\n  --text-muted: #8b949e;\n  --accent: #58a6ff;\n  --green: #3fb950;\n  --yellow: #d29922;\n  --red: #f85149;\n  --purple: #bc8cff;\n  --radius: 8px;\n}\n\n* { margin: 0; padding: 0; box-sizing: border-box; }\n\nbody {\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;\n  background: var(--bg);\n  color: var(--text);\n  min-height: 100vh;\n  overflow-x: hidden;\n}\n\n.hidden { display: none !important; }\n\n/* ===== MOBILE NAV ===== */\n.mobile-nav {\n  position: fixed;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  background: var(--bg-secondary);\n  border-top: 1px solid var(--border);\n  display: flex;\n  z-index: 100;\n  padding-bottom: env(safe-area-inset-bottom);\n}\n\n.nav-btn {\n  flex: 1;\n  padding: 10px 4px;\n  background: none;\n  border: none;\n  color: var(--text-muted);\n  font-size: 10px;\n  font-family: inherit;\n  cursor: pointer;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 3px;\n  transition: color 0.15s;\n}\n\n.nav-btn.active { color: var(--accent); }\n.nav-btn svg { width: 22px; height: 22px; }\n\n/* ===== PAGES ===== */\n.page { display: none; padding: 16px 16px 80px; }\n.page.active { display: block; }\n\n/* ===== HEADER ===== */\n.page-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 16px;\n}\n\n.page-header h1 {\n  font-size: 20px;\n  font-weight: 700;\n  color: var(--accent);\n}\n\n/* ===== SUBJECT SWITCHER ===== */\n.subject-switcher {\n  display: flex;\n  gap: 6px;\n  margin-bottom: 14px;\n  overflow-x: auto;\n  padding-bottom: 4px;\n  -webkit-overflow-scrolling: touch;\n}\n\n.subject-btn {\n  padding: 6px 14px;\n  background: var(--bg-tertiary);\n  border: 1px solid var(--border);\n  border-radius: 16px;\n  color: var(--text-muted);\n  font-size: 13px;\n  cursor: pointer;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.subject-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n/* ===== PROGRESS BAR ===== */\n.progress-bar {\n  position: relative;\n  height: 26px;\n  background: var(--bg-tertiary);\n  border-radius: 13px;\n  overflow: hidden;\n  margin-bottom: 16px;\n}\n\n.progress-fill {\n  height: 100%;\n  background: linear-gradient(90deg, var(--green), var(--accent));\n  border-radius: 13px;\n  transition: width 0.5s ease;\n}\n\n.progress-text {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  font-weight: 600;\n}\n\n/* ===== STATS GRID ===== */\n.stats-grid {\n  display: grid;\n  grid-template-columns: repeat(2, 1fr);\n  gap: 10px;\n  margin-bottom: 20px;\n}\n\n.stat-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 14px;\n  text-align: center;\n}\n\n.stat-value {\n  font-size: 24px;\n  font-weight: 700;\n  color: var(--accent);\n}\n\n.stat-value.green { color: var(--green); }\n.stat-value.yellow { color: var(--yellow); }\n.stat-value.purple { color: var(--purple); }\n\n.stat-label {\n  font-size: 11px;\n  color: var(--text-muted);\n  margin-top: 2px;\n}\n\n/* ===== SECTION DIVIDER ===== */\n.section-divider {\n  font-size: 11px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  margin: 16px 0 10px;\n}\n\n/* ===== PHASE TREE (Topics page) ===== */\n.phase-group { margin-bottom: 8px; }\n\n.phase-header {\n  padding: 10px 14px;\n  font-size: 12px;\n  font-weight: 700;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  user-select: none;\n}\n\n.phase-header:hover { color: var(--text); }\n\n.phase-header .chevron {\n  transition: transform 0.2s;\n  font-size: 14px;\n}\n\n.phase-header.collapsed .chevron { transform: rotate(-90deg); }\n\n.phase-topics { padding: 4px 0; }\n.phase-topics.collapsed { display: none; }\n\n.topic-item {\n  padding: 10px 14px 10px 20px;\n  font-size: 14px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  color: var(--text-muted);\n  border-left: 3px solid transparent;\n  transition: all 0.15s;\n}\n\n.topic-item:active { background: var(--bg-tertiary); }\n.topic-item.active { background: var(--bg-tertiary); color: var(--text); border-left-color: var(--accent); }\n\n.status-dot {\n  width: 10px;\n  height: 10px;\n  border-radius: 50%;\n  flex-shrink: 0;\n}\n\n.status-dot.done { background: var(--green); }\n.status-dot.in_progress { background: var(--yellow); }\n.status-dot.todo { background: var(--bg-tertiary); border: 1.5px solid var(--text-muted); }\n\n.topic-count {\n  margin-left: auto;\n  font-size: 11px;\n  color: var(--text-muted);\n}\n\n/* ===== BACK BUTTON ===== */\n.back-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n  background: none;\n  border: none;\n  color: var(--accent);\n  font-size: 14px;\n  font-family: inherit;\n  cursor: pointer;\n  margin-bottom: 12px;\n  padding: 4px 0;\n}\n\n/* ===== TOPIC DETAIL ===== */\n.topic-title-row {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.topic-title-row h2 { font-size: 18px; font-weight: 600; }\n\n.badge {\n  font-size: 10px;\n  font-weight: 600;\n  padding: 3px 10px;\n  border-radius: 12px;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n}\n\n.badge.todo { background: var(--bg-tertiary); color: var(--text-muted); }\n.badge.in_progress { background: rgba(210,153,34,0.15); color: var(--yellow); }\n.badge.done { background: rgba(63,185,80,0.15); color: var(--green); }\n\n.topic-desc {\n  color: var(--text-muted);\n  font-size: 13px;\n  margin-bottom: 14px;\n  line-height: 1.4;\n}\n\n/* ===== TABS ===== */\n.tabs {\n  display: flex;\n  gap: 4px;\n  margin-bottom: 16px;\n  overflow-x: auto;\n  padding-bottom: 4px;\n  -webkit-overflow-scrolling: touch;\n}\n\n.tab-btn {\n  padding: 7px 14px;\n  background: transparent;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text-muted);\n  cursor: pointer;\n  font-size: 13px;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n  transition: all 0.15s;\n}\n\n.tab-btn:hover { color: var(--text); background: var(--bg-tertiary); }\n.tab-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n.tab-panel { display: none; }\n.tab-panel.active { display: block; }\n\n/* ===== Q&A CARDS ===== */\n.qa-card {\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n  margin-bottom: 14px;\n}\n\n.qa-question { background: var(--bg-secondary); border-bottom: 1px solid var(--border); }\n.qa-answer { background: var(--bg-secondary); }\n.qa-answer + .qa-answer { border-top: 1px solid var(--border); }\n\n.entry-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n  margin-bottom: 14px;\n}\n\n.entry-header {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 14px;\n  background: var(--bg-tertiary);\n  font-size: 11px;\n  color: var(--text-muted);\n  border-bottom: 1px solid var(--border);\n}\n\n.entry-kind {\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n}\n\n.entry-kind.question { color: var(--accent); }\n.entry-kind.answer { color: var(--green); }\n.entry-kind.note { color: var(--purple); }\n\n.entry-body {\n  padding: 14px;\n  font-size: 14px;\n  line-height: 1.6;\n  background: var(--bg-secondary);\n}\n\n.entry-body p { margin-bottom: 10px; }\n.entry-body p:last-child { margin-bottom: 0; }\n\n.entry-body h1, .entry-body h2, .entry-body h3 {\n  margin-top: 16px;\n  margin-bottom: 8px;\n}\n\n.entry-body h1:first-child, .entry-body h2:first-child, .entry-body h3:first-child {\n  margin-top: 0;\n}\n\n.entry-body code {\n  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;\n  font-size: 13px;\n}\n\n.entry-body :not(pre) > code {\n  background: var(--bg-tertiary);\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n\n.entry-body pre {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 12px;\n  overflow-x: auto;\n  margin: 8px 0;\n  -webkit-overflow-scrolling: touch;\n}\n\n.entry-body pre code {\n  background: none;\n  padding: 0;\n  font-size: 12px;\n  color: var(--text);\n}\n\n.entry-body ul, .entry-body ol {\n  padding-left: 24px;\n  margin-bottom: 12px;\n}\n\n.entry-body li { margin-bottom: 4px; }\n\n.entry-body blockquote {\n  border-left: 3px solid var(--accent);\n  padding-left: 16px;\n  color: var(--text-muted);\n  margin: 12px 0;\n}\n\n.entry-body table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.entry-body th, .entry-body td {\n  border: 1px solid var(--border);\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.entry-body th {\n  background: var(--bg-tertiary);\n  font-weight: 600;\n}\n\n/* ===== VIZ PANEL ===== */\n.viz-selector {\n  display: flex;\n  gap: 6px;\n  margin-bottom: 14px;\n  overflow-x: auto;\n  -webkit-overflow-scrolling: touch;\n  padding-bottom: 4px;\n}\n\n.viz-select-btn {\n  padding: 7px 12px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text-muted);\n  cursor: pointer;\n  font-size: 12px;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n  transition: all 0.15s;\n}\n\n.viz-select-btn:hover { color: var(--text); border-color: var(--text-muted); }\n.viz-select-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n.viz-stage {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n}\n\n.viz-canvas {\n  padding: 20px 12px;\n  min-height: 140px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n\n.viz-description {\n  padding: 14px;\n  border-top: 1px solid var(--border);\n  font-size: 13px;\n  line-height: 1.6;\n}\n\n.viz-description code {\n  background: var(--bg-tertiary);\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 11px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  color: var(--accent);\n}\n\n.viz-controls {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 14px;\n  padding: 10px;\n  border-top: 1px solid var(--border);\n  background: var(--bg-tertiary);\n}\n\n.viz-controls button {\n  padding: 8px 18px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text);\n  cursor: pointer;\n  font-size: 13px;\n  font-family: inherit;\n  transition: all 0.15s;\n}\n\n.viz-controls button:hover:not(:disabled) {\n  border-color: var(--accent);\n  color: var(--accent);\n}\n\n.viz-controls button:disabled { opacity: 0.3; cursor: default; }\n\n.viz-step-label { font-size: 12px; color: var(--text-muted); min-width: 80px; text-align: center; }\n\n/* Viz primitives */\n.viz-box {\n  padding: 10px 14px;\n  border-radius: 8px;\n  font-size: 12px;\n  font-weight: 600;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  text-align: center;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n}\n\n.viz-box-label {\n  font-size: 10px;\n  color: var(--text-muted);\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n  font-weight: 400;\n}\n\n.viz-arrow { font-size: 20px; color: var(--accent); }\n\n.box-blue { background: rgba(88,166,255,0.15); border: 1px solid var(--accent); color: var(--accent); }\n.box-green { background: rgba(63,185,80,0.15); border: 1px solid var(--green); color: var(--green); }\n.box-yellow { background: rgba(210,153,34,0.15); border: 1px solid var(--yellow); color: var(--yellow); }\n.box-purple { background: rgba(188,140,255,0.15); border: 1px solid var(--purple); color: var(--purple); }\n\n.viz-slot {\n  width: 28px;\n  height: 28px;\n  border: 1px solid var(--border);\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 10px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  transition: all 0.3s ease;\n}\n\n.viz-slot.filled {\n  background: rgba(88,166,255,0.2);\n  border-color: var(--accent);\n  color: var(--accent);\n}\n\n.viz-slot.empty { color: var(--text-muted); }\n\n.viz-select-case {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 14px;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  font-size: 12px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  transition: all 0.3s ease;\n  min-width: 200px;\n}\n\n.viz-select-case.selected {\n  border-color: var(--green);\n  background: rgba(63,185,80,0.1);\n  color: var(--green);\n}\n\n.viz-select-case.waiting { color: var(--text-muted); }\n\n.viz-flow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n  justify-content: center;\n}\n\n/* ===== EXERCISE CARDS ===== */\n.exercise-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 14px;\n  margin-bottom: 10px;\n}\n\n.exercise-card.expandable { cursor: pointer; }\n.exercise-card.expandable:active { background: var(--bg-tertiary); }\n\n.exercise-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 6px;\n  gap: 8px;\n}\n\n.exercise-title { font-weight: 600; font-size: 14px; }\n\n.exercise-type {\n  font-size: 10px;\n  padding: 3px 8px;\n  border-radius: 10px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.exercise-type.coding { background: rgba(88,166,255,0.15); color: var(--accent); }\n.exercise-type.quiz { background: rgba(188,140,255,0.15); color: var(--purple); }\n.exercise-type.project { background: rgba(210,153,34,0.15); color: var(--yellow); }\n.exercise-type.assignment { background: rgba(248,81,73,0.15); color: var(--red); }\n\n.exercise-desc {\n  color: var(--text-muted);\n  font-size: 13px;\n  line-height: 1.5;\n  margin-bottom: 10px;\n}\n\n.exercise-meta {\n  display: flex;\n  gap: 12px;\n  font-size: 11px;\n  color: var(--text-muted);\n  flex-wrap: wrap;\n}\n\n.exercise-expand-icon {\n  font-size: 12px;\n  color: var(--text-muted);\n  transition: transform 0.2s;\n  flex-shrink: 0;\n}\n\n.exercise-detail {\n  display: none;\n  margin-top: 12px;\n  padding-top: 12px;\n  border-top: 1px solid var(--border);\n}\n\n.exercise-detail.open { display: block; }\n\n.exercise-detail h4 {\n  font-size: 12px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  margin-bottom: 8px;\n  margin-top: 14px;\n}\n\n.exercise-detail h4:first-child { margin-top: 0; }\n\n.exercise-detail p, .exercise-detail li {\n  font-size: 13px;\n  line-height: 1.6;\n  color: var(--text);\n}\n\n.exercise-detail ul { padding-left: 18px; margin-bottom: 8px; }\n.exercise-detail li { margin-bottom: 4px; }\n\n.exercise-detail pre {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 12px;\n  overflow-x: auto;\n  margin: 8px 0;\n  -webkit-overflow-scrolling: touch;\n}\n\n.exercise-detail code {\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  font-size: 12px;\n}\n\n.exercise-detail :not(pre) > code {\n  background: var(--bg-tertiary);\n  padding: 1px 5px;\n  border-radius: 3px;\n  color: var(--accent);\n}\n\n.exercise-detail pre code {\n  background: none;\n  padding: 0;\n  color: var(--text);\n}\n\n/* Test cases */\n.test-case {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  margin-bottom: 8px;\n  overflow: hidden;\n}\n\n.test-case-header {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  font-weight: 600;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  background: var(--bg-tertiary);\n  border-bottom: 1px solid var(--border);\n}\n\n.test-status {\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  flex-shrink: 0;\n}\n\n.test-status.pass { background: var(--green); }\n.test-status.fail { background: var(--red); }\n.test-status.pending { background: var(--bg-tertiary); border: 1.5px solid var(--text-muted); }\n\n.test-case-body {\n  padding: 10px 12px;\n  font-size: 12px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  color: var(--text-muted);\n  line-height: 1.5;\n}\n\n/* Quiz questions */\n.quiz-question {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 14px;\n  margin-bottom: 10px;\n}\n\n.quiz-question p { font-size: 14px; margin-bottom: 10px; }\n\n.quiz-option {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  margin-bottom: 4px;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  cursor: pointer;\n  font-size: 13px;\n  transition: all 0.15s;\n}\n\n.quiz-option:hover { border-color: var(--accent); background: rgba(88,166,255,0.05); }\n.quiz-option.selected { border-color: var(--accent); background: rgba(88,166,255,0.1); color: var(--accent); }\n.quiz-option.correct { border-color: var(--green); background: rgba(63,185,80,0.1); color: var(--green); }\n.quiz-option.incorrect { border-color: var(--red); background: rgba(248,81,73,0.1); color: var(--red); }\n\n/* Action buttons */\n.exercise-actions {\n  display: flex;\n  gap: 8px;\n  margin-top: 14px;\n  flex-wrap: wrap;\n}\n\n.exercise-action-btn {\n  padding: 10px 16px;\n  border-radius: 6px;\n  font-size: 13px;\n  font-weight: 600;\n  font-family: inherit;\n  cursor: pointer;\n  border: none;\n  flex: 1;\n  min-width: 120px;\n  text-align: center;\n}\n\n.btn-primary { background: var(--accent); color: #0d1117; }\n.btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text); }\n.btn-success { background: rgba(63,185,80,0.15); border: 1px solid var(--green); color: var(--green); }\n\n/* Exercise progress bar */\n.exercise-progress {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  margin-top: 12px;\n  padding: 10px 12px;\n  background: var(--bg);\n  border-radius: 6px;\n  font-size: 12px;\n}\n\n.exercise-progress-bar {\n  flex: 1;\n  height: 6px;\n  background: var(--bg-tertiary);\n  border-radius: 3px;\n  overflow: hidden;\n}\n\n.exercise-progress-fill { height: 100%; border-radius: 3px; }\n.exercise-progress-fill.green { background: var(--green); }\n.exercise-progress-fill.yellow { background: var(--yellow); }\n\n/* ===== SEARCH ===== */\n.search-bar {\n  position: relative;\n  margin-bottom: 16px;\n}\n\n.search-bar input {\n  width: 100%;\n  padding: 12px 16px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  color: var(--text);\n  font-size: 14px;\n  font-family: inherit;\n  outline: none;\n}\n\n.search-bar input:focus { border-color: var(--accent); }\n.search-bar input::placeholder { color: var(--text-muted); }\n\n.search-result-item {\n  padding: 12px 14px;\n  cursor: pointer;\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  margin-bottom: 8px;\n  background: var(--bg-secondary);\n  transition: background 0.1s;\n}\n\n.search-result-item:hover { background: var(--bg-tertiary); }\n\n.search-result-meta {\n  font-size: 11px;\n  color: var(--text-muted);\n  margin-bottom: 4px;\n  display: flex;\n  gap: 8px;\n}\n\n.search-result-content {\n  font-size: 13px;\n  color: var(--text);\n  line-height: 1.5;\n  max-height: 60px;\n  overflow: hidden;\n}\n\n.search-no-results {\n  padding: 32px 20px;\n  text-align: center;\n  color: var(--text-muted);\n}\n\n/* Search modal (desktop) */\n.modal {\n  position: fixed;\n  inset: 0;\n  z-index: 200;\n  display: flex;\n  align-items: flex-start;\n  justify-content: center;\n  padding-top: 15vh;\n}\n\n.modal-backdrop {\n  position: absolute;\n  inset: 0;\n  background: rgba(0,0,0,0.6);\n  backdrop-filter: blur(4px);\n}\n\n.modal-content {\n  position: relative;\n  width: 600px;\n  max-width: 90vw;\n  max-height: 500px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 12px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  box-shadow: 0 16px 48px rgba(0,0,0,0.4);\n}\n\n.modal-content input {\n  width: 100%;\n  padding: 16px 20px;\n  background: transparent;\n  border: none;\n  border-bottom: 1px solid var(--border);\n  color: var(--text);\n  font-size: 16px;\n  outline: none;\n  font-family: inherit;\n}\n\n.modal-content input::placeholder { color: var(--text-muted); }\n\n.modal-results {\n  overflow-y: auto;\n  max-height: 400px;\n}\n\n/* ===== EMPTY STATES ===== */\n.empty-state {\n  text-align: center;\n  padding: 48px 16px;\n  color: var(--text-muted);\n}\n\n.empty-state p { margin-bottom: 8px; }\n\n.empty-state code {\n  background: var(--bg-tertiary);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n\n/* ===== KEYBOARD SHORTCUTS ===== */\nkbd {\n  background: var(--bg-tertiary);\n  border: 1px solid var(--border);\n  border-radius: 4px;\n  padding: 2px 6px;\n  font-size: 11px;\n  font-family: inherit;\n  color: var(--text-muted);\n}\n\n/* ===== SCROLLBAR ===== */\n::-webkit-scrollbar { width: 8px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }\n::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }\n\n/* ===== SSE STATUS ===== */\n.sse-dot {\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  display: inline-block;\n}\n\n.sse-dot.connected { background: var(--green); }\n.sse-dot.disconnected { background: var(--red); }\n\n/* ===== DESKTOP LAYOUT ===== */\n@media (min-width: 769px) {\n  .mobile-nav { display: none; }\n  body { display: flex; height: 100vh; overflow: hidden; }\n\n  #desktop-sidebar {\n    display: flex !important;\n    width: 300px;\n    min-width: 300px;\n    background: var(--bg-secondary);\n    border-right: 1px solid var(--border);\n    flex-direction: column;\n    overflow: hidden;\n  }\n\n  #desktop-sidebar .sidebar-inner {\n    flex: 1;\n    overflow-y: auto;\n    padding: 16px;\n  }\n\n  #desktop-sidebar .sidebar-footer {\n    padding: 12px 16px;\n    border-top: 1px solid var(--border);\n    font-size: 12px;\n    color: var(--text-muted);\n    display: flex;\n    align-items: center;\n    gap: 6px;\n  }\n\n  .page-container {\n    flex: 1;\n    overflow-y: auto;\n    padding: 32px 48px;\n  }\n\n  .page { padding: 0 0 32px; }\n}\n\n@media (max-width: 768px) {\n  #desktop-sidebar { display: none !important; }\n  .page-container { display: contents; }\n}\n";
+var styles_default = "/* ===== CSS VARIABLES (Dark Theme) ===== */\n:root {\n  --bg: #0d1117;\n  --bg-secondary: #161b22;\n  --bg-tertiary: #21262d;\n  --border: #30363d;\n  --text: #e6edf3;\n  --text-muted: #8b949e;\n  --accent: #58a6ff;\n  --green: #3fb950;\n  --yellow: #d29922;\n  --red: #f85149;\n  --purple: #bc8cff;\n  --radius: 8px;\n}\n\n* { margin: 0; padding: 0; box-sizing: border-box; }\n\nbody {\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;\n  background: var(--bg);\n  color: var(--text);\n  min-height: 100vh;\n  overflow-x: hidden;\n}\n\n.hidden { display: none !important; }\n\n/* ===== MOBILE NAV ===== */\n.mobile-nav {\n  position: fixed;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  background: var(--bg-secondary);\n  border-top: 1px solid var(--border);\n  display: flex;\n  z-index: 100;\n  padding-bottom: env(safe-area-inset-bottom);\n}\n\n.nav-btn {\n  flex: 1;\n  padding: 10px 4px;\n  background: none;\n  border: none;\n  color: var(--text-muted);\n  font-size: 10px;\n  font-family: inherit;\n  cursor: pointer;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 3px;\n  transition: color 0.15s;\n}\n\n.nav-btn.active { color: var(--accent); }\n.nav-btn svg { width: 22px; height: 22px; }\n\n/* ===== PAGES ===== */\n.page { display: none; padding: 16px 16px 80px; }\n.page.active { display: block; }\n\n/* ===== HEADER ===== */\n.page-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 16px;\n}\n\n.page-header h1 {\n  font-size: 20px;\n  font-weight: 700;\n  color: var(--accent);\n}\n\n/* ===== SUBJECT SWITCHER ===== */\n.subject-switcher {\n  display: flex;\n  gap: 6px;\n  margin-bottom: 14px;\n  overflow-x: auto;\n  padding-bottom: 4px;\n  -webkit-overflow-scrolling: touch;\n}\n\n.subject-btn {\n  padding: 6px 14px;\n  background: var(--bg-tertiary);\n  border: 1px solid var(--border);\n  border-radius: 16px;\n  color: var(--text-muted);\n  font-size: 13px;\n  cursor: pointer;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.subject-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n/* ===== PROGRESS BAR ===== */\n.progress-bar {\n  position: relative;\n  height: 26px;\n  background: var(--bg-tertiary);\n  border-radius: 13px;\n  overflow: hidden;\n  margin-bottom: 16px;\n}\n\n.progress-fill {\n  height: 100%;\n  background: linear-gradient(90deg, var(--green), var(--accent));\n  border-radius: 13px;\n  transition: width 0.5s ease;\n}\n\n.progress-text {\n  position: absolute;\n  inset: 0;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 12px;\n  font-weight: 600;\n}\n\n/* ===== STATS GRID ===== */\n.stats-grid {\n  display: grid;\n  grid-template-columns: repeat(2, 1fr);\n  gap: 10px;\n  margin-bottom: 20px;\n}\n\n.stat-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 14px;\n  text-align: center;\n}\n\n.stat-value {\n  font-size: 24px;\n  font-weight: 700;\n  color: var(--accent);\n}\n\n.stat-value.green { color: var(--green); }\n.stat-value.yellow { color: var(--yellow); }\n.stat-value.purple { color: var(--purple); }\n\n.stat-label {\n  font-size: 11px;\n  color: var(--text-muted);\n  margin-top: 2px;\n}\n\n/* ===== SECTION DIVIDER ===== */\n.section-divider {\n  font-size: 11px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  margin: 16px 0 10px;\n}\n\n/* ===== PHASE TREE (Topics page) ===== */\n.phase-group { margin-bottom: 8px; }\n\n.phase-header {\n  padding: 10px 14px;\n  font-size: 12px;\n  font-weight: 700;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  user-select: none;\n}\n\n.phase-header:hover { color: var(--text); }\n\n.phase-header .chevron {\n  transition: transform 0.2s;\n  font-size: 14px;\n}\n\n.phase-header.collapsed .chevron { transform: rotate(-90deg); }\n\n.phase-topics { padding: 4px 0; }\n.phase-topics.collapsed { display: none; }\n\n.topic-item {\n  padding: 10px 14px 10px 20px;\n  font-size: 14px;\n  cursor: pointer;\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  color: var(--text-muted);\n  border-left: 3px solid transparent;\n  transition: all 0.15s;\n}\n\n.topic-item:active { background: var(--bg-tertiary); }\n.topic-item.active { background: var(--bg-tertiary); color: var(--text); border-left-color: var(--accent); }\n\n.status-dot {\n  width: 10px;\n  height: 10px;\n  border-radius: 50%;\n  flex-shrink: 0;\n}\n\n.status-dot.done { background: var(--green); }\n.status-dot.in_progress { background: var(--yellow); }\n.status-dot.todo { background: var(--bg-tertiary); border: 1.5px solid var(--text-muted); }\n\n.topic-count {\n  margin-left: auto;\n  font-size: 11px;\n  color: var(--text-muted);\n}\n\n/* ===== BACK BUTTON ===== */\n.back-btn {\n  display: inline-flex;\n  align-items: center;\n  gap: 4px;\n  background: none;\n  border: none;\n  color: var(--accent);\n  font-size: 14px;\n  font-family: inherit;\n  cursor: pointer;\n  margin-bottom: 12px;\n  padding: 4px 0;\n}\n\n/* ===== TOPIC DETAIL ===== */\n.topic-title-row {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  margin-bottom: 6px;\n  flex-wrap: wrap;\n}\n\n.topic-title-row h2 { font-size: 18px; font-weight: 600; }\n\n.badge {\n  font-size: 10px;\n  font-weight: 600;\n  padding: 3px 10px;\n  border-radius: 12px;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n}\n\n.badge.todo { background: var(--bg-tertiary); color: var(--text-muted); }\n.badge.in_progress { background: rgba(210,153,34,0.15); color: var(--yellow); }\n.badge.done { background: rgba(63,185,80,0.15); color: var(--green); }\n\n.topic-desc {\n  color: var(--text-muted);\n  font-size: 13px;\n  margin-bottom: 14px;\n  line-height: 1.4;\n}\n\n/* ===== TABS ===== */\n.tabs {\n  display: flex;\n  gap: 4px;\n  margin-bottom: 16px;\n  overflow-x: auto;\n  padding-bottom: 4px;\n  -webkit-overflow-scrolling: touch;\n}\n\n.tab-btn {\n  padding: 7px 14px;\n  background: transparent;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text-muted);\n  cursor: pointer;\n  font-size: 13px;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n  transition: all 0.15s;\n}\n\n.tab-btn:hover { color: var(--text); background: var(--bg-tertiary); }\n.tab-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n.tab-panel { display: none; }\n.tab-panel.active { display: block; }\n\n/* ===== Q&A CARDS ===== */\n.qa-card {\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n  margin-bottom: 14px;\n}\n\n.qa-question { background: var(--bg-secondary); border-bottom: 1px solid var(--border); }\n.qa-answer { background: var(--bg-secondary); }\n.qa-answer + .qa-answer { border-top: 1px solid var(--border); }\n\n.entry-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n  margin-bottom: 14px;\n}\n\n.entry-header {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 14px;\n  background: var(--bg-tertiary);\n  font-size: 11px;\n  color: var(--text-muted);\n  border-bottom: 1px solid var(--border);\n}\n\n.entry-kind {\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n}\n\n.entry-kind.question { color: var(--accent); }\n.entry-kind.answer { color: var(--green); }\n.entry-kind.note { color: var(--purple); }\n\n.entry-body {\n  padding: 14px;\n  font-size: 14px;\n  line-height: 1.6;\n  background: var(--bg-secondary);\n}\n\n.entry-body p { margin-bottom: 10px; }\n.entry-body p:last-child { margin-bottom: 0; }\n\n.entry-body h1, .entry-body h2, .entry-body h3 {\n  margin-top: 16px;\n  margin-bottom: 8px;\n}\n\n.entry-body h1:first-child, .entry-body h2:first-child, .entry-body h3:first-child {\n  margin-top: 0;\n}\n\n.entry-body code {\n  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;\n  font-size: 13px;\n}\n\n.entry-body :not(pre) > code {\n  background: var(--bg-tertiary);\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n\n.entry-body pre {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 12px;\n  overflow-x: auto;\n  margin: 8px 0;\n  -webkit-overflow-scrolling: touch;\n}\n\n.entry-body pre code {\n  background: none;\n  padding: 0;\n  font-size: 12px;\n  color: var(--text);\n}\n\n.entry-body ul, .entry-body ol {\n  padding-left: 24px;\n  margin-bottom: 12px;\n}\n\n.entry-body li { margin-bottom: 4px; }\n\n.entry-body blockquote {\n  border-left: 3px solid var(--accent);\n  padding-left: 16px;\n  color: var(--text-muted);\n  margin: 12px 0;\n}\n\n.entry-body table {\n  width: 100%;\n  border-collapse: collapse;\n  margin: 12px 0;\n}\n\n.entry-body th, .entry-body td {\n  border: 1px solid var(--border);\n  padding: 8px 12px;\n  text-align: left;\n}\n\n.entry-body th {\n  background: var(--bg-tertiary);\n  font-weight: 600;\n}\n\n/* ===== VIZ PANEL ===== */\n.viz-selector {\n  display: flex;\n  gap: 6px;\n  margin-bottom: 14px;\n  overflow-x: auto;\n  -webkit-overflow-scrolling: touch;\n  padding-bottom: 4px;\n}\n\n.viz-select-btn {\n  padding: 7px 12px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text-muted);\n  cursor: pointer;\n  font-size: 12px;\n  font-family: inherit;\n  white-space: nowrap;\n  flex-shrink: 0;\n  transition: all 0.15s;\n}\n\n.viz-select-btn:hover { color: var(--text); border-color: var(--text-muted); }\n.viz-select-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,0.1); }\n\n.viz-stage {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  overflow: hidden;\n}\n\n.viz-canvas {\n  padding: 20px 12px;\n  min-height: 140px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n\n.viz-description {\n  padding: 14px;\n  border-top: 1px solid var(--border);\n  font-size: 13px;\n  line-height: 1.6;\n}\n\n.viz-description code {\n  background: var(--bg-tertiary);\n  padding: 2px 5px;\n  border-radius: 4px;\n  font-size: 11px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  color: var(--accent);\n}\n\n.viz-controls {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  gap: 14px;\n  padding: 10px;\n  border-top: 1px solid var(--border);\n  background: var(--bg-tertiary);\n}\n\n.viz-controls button {\n  padding: 8px 18px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  color: var(--text);\n  cursor: pointer;\n  font-size: 13px;\n  font-family: inherit;\n  transition: all 0.15s;\n}\n\n.viz-controls button:hover:not(:disabled) {\n  border-color: var(--accent);\n  color: var(--accent);\n}\n\n.viz-controls button:disabled { opacity: 0.3; cursor: default; }\n\n.viz-step-label { font-size: 12px; color: var(--text-muted); min-width: 80px; text-align: center; }\n\n/* Viz primitives */\n.viz-box {\n  padding: 10px 14px;\n  border-radius: 8px;\n  font-size: 12px;\n  font-weight: 600;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  text-align: center;\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 4px;\n}\n\n.viz-box-label {\n  font-size: 10px;\n  color: var(--text-muted);\n  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;\n  font-weight: 400;\n}\n\n.viz-arrow { font-size: 20px; color: var(--accent); }\n\n.box-blue { background: rgba(88,166,255,0.15); border: 1px solid var(--accent); color: var(--accent); }\n.box-green { background: rgba(63,185,80,0.15); border: 1px solid var(--green); color: var(--green); }\n.box-yellow { background: rgba(210,153,34,0.15); border: 1px solid var(--yellow); color: var(--yellow); }\n.box-purple { background: rgba(188,140,255,0.15); border: 1px solid var(--purple); color: var(--purple); }\n\n.viz-slot {\n  width: 28px;\n  height: 28px;\n  border: 1px solid var(--border);\n  border-radius: 4px;\n  display: flex;\n  align-items: center;\n  justify-content: center;\n  font-size: 10px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  transition: all 0.3s ease;\n}\n\n.viz-slot.filled {\n  background: rgba(88,166,255,0.2);\n  border-color: var(--accent);\n  color: var(--accent);\n}\n\n.viz-slot.empty { color: var(--text-muted); }\n\n.viz-select-case {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 14px;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  font-size: 12px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  transition: all 0.3s ease;\n  min-width: 200px;\n}\n\n.viz-select-case.selected {\n  border-color: var(--green);\n  background: rgba(63,185,80,0.1);\n  color: var(--green);\n}\n\n.viz-select-case.waiting { color: var(--text-muted); }\n\n.viz-flow {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n  justify-content: center;\n}\n\n/* ===== EXERCISE CARDS ===== */\n.exercise-card {\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  padding: 14px;\n  margin-bottom: 10px;\n}\n\n.exercise-card.expandable { cursor: pointer; }\n.exercise-card.expandable:active { background: var(--bg-tertiary); }\n\n.exercise-header {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  margin-bottom: 6px;\n  gap: 8px;\n}\n\n.exercise-title { font-weight: 600; font-size: 14px; }\n\n.exercise-type {\n  font-size: 10px;\n  padding: 3px 8px;\n  border-radius: 10px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  white-space: nowrap;\n  flex-shrink: 0;\n}\n\n.exercise-type.coding { background: rgba(88,166,255,0.15); color: var(--accent); }\n.exercise-type.quiz { background: rgba(188,140,255,0.15); color: var(--purple); }\n.exercise-type.project { background: rgba(210,153,34,0.15); color: var(--yellow); }\n.exercise-type.assignment { background: rgba(248,81,73,0.15); color: var(--red); }\n\n.exercise-desc {\n  color: var(--text-muted);\n  font-size: 13px;\n  line-height: 1.5;\n  margin-bottom: 10px;\n}\n\n.exercise-meta {\n  display: flex;\n  gap: 12px;\n  font-size: 11px;\n  color: var(--text-muted);\n  flex-wrap: wrap;\n}\n\n.exercise-expand-icon {\n  font-size: 12px;\n  color: var(--text-muted);\n  transition: transform 0.2s;\n  flex-shrink: 0;\n}\n\n.exercise-detail {\n  display: none;\n  margin-top: 12px;\n  padding-top: 12px;\n  border-top: 1px solid var(--border);\n}\n\n.exercise-detail.open { display: block; }\n\n.exercise-detail h4 {\n  font-size: 12px;\n  font-weight: 600;\n  text-transform: uppercase;\n  letter-spacing: 0.5px;\n  color: var(--text-muted);\n  margin-bottom: 8px;\n  margin-top: 14px;\n}\n\n.exercise-detail h4:first-child { margin-top: 0; }\n\n.exercise-detail p, .exercise-detail li {\n  font-size: 13px;\n  line-height: 1.6;\n  color: var(--text);\n}\n\n.exercise-detail ul { padding-left: 18px; margin-bottom: 8px; }\n.exercise-detail li { margin-bottom: 4px; }\n\n.exercise-detail pre {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 12px;\n  overflow-x: auto;\n  margin: 8px 0;\n  -webkit-overflow-scrolling: touch;\n}\n\n.exercise-detail code {\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  font-size: 12px;\n}\n\n.exercise-detail :not(pre) > code {\n  background: var(--bg-tertiary);\n  padding: 1px 5px;\n  border-radius: 3px;\n  color: var(--accent);\n}\n\n.exercise-detail pre code {\n  background: none;\n  padding: 0;\n  color: var(--text);\n}\n\n/* Test cases */\n.test-case {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  margin-bottom: 8px;\n  overflow: hidden;\n}\n\n.test-case-header {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  font-size: 12px;\n  font-weight: 600;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  background: var(--bg-tertiary);\n  border-bottom: 1px solid var(--border);\n}\n\n.test-status {\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  flex-shrink: 0;\n}\n\n.test-status.pass { background: var(--green); }\n.test-status.fail { background: var(--red); }\n.test-status.pending { background: var(--bg-tertiary); border: 1.5px solid var(--text-muted); }\n\n.test-case-body {\n  padding: 10px 12px;\n  font-size: 12px;\n  font-family: 'SF Mono', 'Fira Code', monospace;\n  color: var(--text-muted);\n  line-height: 1.5;\n}\n\n/* Quiz questions */\n.quiz-question {\n  background: var(--bg);\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  padding: 14px;\n  margin-bottom: 10px;\n}\n\n.quiz-question p { font-size: 14px; margin-bottom: 10px; }\n\n.quiz-option {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  padding: 8px 12px;\n  margin-bottom: 4px;\n  border: 1px solid var(--border);\n  border-radius: 6px;\n  cursor: pointer;\n  font-size: 13px;\n  transition: all 0.15s;\n}\n\n.quiz-option:hover { border-color: var(--accent); background: rgba(88,166,255,0.05); }\n.quiz-option.selected { border-color: var(--accent); background: rgba(88,166,255,0.1); color: var(--accent); }\n.quiz-option.correct { border-color: var(--green); background: rgba(63,185,80,0.1); color: var(--green); }\n.quiz-option.incorrect { border-color: var(--red); background: rgba(248,81,73,0.1); color: var(--red); }\n\n/* Action buttons */\n.exercise-actions {\n  display: flex;\n  gap: 8px;\n  margin-top: 14px;\n  flex-wrap: wrap;\n}\n\n.exercise-action-btn {\n  padding: 10px 16px;\n  border-radius: 6px;\n  font-size: 13px;\n  font-weight: 600;\n  font-family: inherit;\n  cursor: pointer;\n  border: none;\n  flex: 1;\n  min-width: 120px;\n  text-align: center;\n}\n\n.btn-primary { background: var(--accent); color: #0d1117; }\n.btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text); }\n.btn-success { background: rgba(63,185,80,0.15); border: 1px solid var(--green); color: var(--green); }\n\n/* Exercise progress bar */\n.exercise-progress {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  margin-top: 12px;\n  padding: 10px 12px;\n  background: var(--bg);\n  border-radius: 6px;\n  font-size: 12px;\n}\n\n.exercise-progress-bar {\n  flex: 1;\n  height: 6px;\n  background: var(--bg-tertiary);\n  border-radius: 3px;\n  overflow: hidden;\n}\n\n.exercise-progress-fill { height: 100%; border-radius: 3px; }\n.exercise-progress-fill.green { background: var(--green); }\n.exercise-progress-fill.yellow { background: var(--yellow); }\n\n/* ===== SEARCH ===== */\n.search-bar {\n  position: relative;\n  margin-bottom: 16px;\n}\n\n.search-bar input {\n  width: 100%;\n  padding: 12px 16px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  color: var(--text);\n  font-size: 14px;\n  font-family: inherit;\n  outline: none;\n}\n\n.search-bar input:focus { border-color: var(--accent); }\n.search-bar input::placeholder { color: var(--text-muted); }\n\n.search-result-item {\n  padding: 12px 14px;\n  cursor: pointer;\n  border: 1px solid var(--border);\n  border-radius: var(--radius);\n  margin-bottom: 8px;\n  background: var(--bg-secondary);\n  transition: background 0.1s;\n}\n\n.search-result-item:hover { background: var(--bg-tertiary); }\n\n.search-result-meta {\n  font-size: 11px;\n  color: var(--text-muted);\n  margin-bottom: 4px;\n  display: flex;\n  gap: 8px;\n}\n\n.search-result-content {\n  font-size: 13px;\n  color: var(--text);\n  line-height: 1.5;\n  max-height: 60px;\n  overflow: hidden;\n}\n\n.search-no-results {\n  padding: 32px 20px;\n  text-align: center;\n  color: var(--text-muted);\n}\n\n/* Search modal (desktop) */\n.modal {\n  position: fixed;\n  inset: 0;\n  z-index: 200;\n  display: flex;\n  align-items: flex-start;\n  justify-content: center;\n  padding-top: 15vh;\n}\n\n.modal-backdrop {\n  position: absolute;\n  inset: 0;\n  background: rgba(0,0,0,0.6);\n  backdrop-filter: blur(4px);\n}\n\n.modal-content {\n  position: relative;\n  width: 600px;\n  max-width: 90vw;\n  max-height: 500px;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 12px;\n  overflow: hidden;\n  display: flex;\n  flex-direction: column;\n  box-shadow: 0 16px 48px rgba(0,0,0,0.4);\n}\n\n.modal-content input {\n  width: 100%;\n  padding: 16px 20px;\n  background: transparent;\n  border: none;\n  border-bottom: 1px solid var(--border);\n  color: var(--text);\n  font-size: 16px;\n  outline: none;\n  font-family: inherit;\n}\n\n.modal-content input::placeholder { color: var(--text-muted); }\n\n.modal-results {\n  overflow-y: auto;\n  max-height: 400px;\n}\n\n/* ===== EMPTY STATES ===== */\n.empty-state {\n  text-align: center;\n  padding: 48px 16px;\n  color: var(--text-muted);\n}\n\n.empty-state p { margin-bottom: 8px; }\n\n.empty-state code {\n  background: var(--bg-tertiary);\n  padding: 2px 6px;\n  border-radius: 4px;\n  font-size: 12px;\n}\n\n/* ===== KEYBOARD SHORTCUTS ===== */\nkbd {\n  background: var(--bg-tertiary);\n  border: 1px solid var(--border);\n  border-radius: 4px;\n  padding: 2px 6px;\n  font-size: 11px;\n  font-family: inherit;\n  color: var(--text-muted);\n}\n\n/* ===== SCROLLBAR ===== */\n::-webkit-scrollbar { width: 8px; }\n::-webkit-scrollbar-track { background: transparent; }\n::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }\n::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }\n\n/* ===== SSE STATUS ===== */\n.sse-dot {\n  width: 8px;\n  height: 8px;\n  border-radius: 50%;\n  display: inline-block;\n}\n\n.sse-dot.connected { background: var(--green); }\n.sse-dot.disconnected { background: var(--red); }\n\n/* ===== DESKTOP LAYOUT ===== */\n@media (min-width: 769px) {\n  .mobile-nav { display: none; }\n  body { display: flex; height: 100vh; overflow: hidden; }\n\n  #desktop-sidebar {\n    display: flex !important;\n    width: 300px;\n    min-width: 300px;\n    background: var(--bg-secondary);\n    border-right: 1px solid var(--border);\n    flex-direction: column;\n    overflow: hidden;\n  }\n\n  #desktop-sidebar .sidebar-inner {\n    flex: 1;\n    overflow-y: auto;\n    padding: 16px;\n  }\n\n  #desktop-sidebar .sidebar-footer {\n    padding: 12px 16px;\n    border-top: 1px solid var(--border);\n    font-size: 12px;\n    color: var(--text-muted);\n    display: flex;\n    align-items: center;\n    gap: 6px;\n  }\n\n  .page-container {\n    flex: 1;\n    overflow-y: auto;\n    padding: 32px 48px;\n  }\n\n  .page { padding: 0 0 32px; }\n}\n\n@media (max-width: 768px) {\n  #desktop-sidebar { display: none !important; }\n  .page-container { display: contents; }\n}\n\n/* ===== RESOURCES ===== */\n.resources-list {\n  display: flex;\n  flex-direction: column;\n  gap: 0.5rem;\n}\n\n.resource-card {\n  display: flex;\n  flex-direction: column;\n  padding: 0.75rem 1rem;\n  background: var(--bg-secondary);\n  border: 1px solid var(--border);\n  border-radius: 8px;\n  text-decoration: none;\n  color: var(--text);\n  transition: border-color 0.15s, background 0.15s;\n}\n\n.resource-card:hover {\n  border-color: var(--accent);\n  background: var(--bg-tertiary);\n}\n\n.resource-title {\n  font-weight: 500;\n}\n\n.resource-url {\n  font-size: 0.8rem;\n  color: var(--text-muted);\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n/* ===== EXERCISE EXPAND UX ===== */\n.exercise-header {\n  cursor: pointer;\n}\n\n.exercise-header:hover {\n  background: var(--bg-tertiary);\n  border-radius: var(--radius);\n}\n\n.exercise-card.open .exercise-expand-icon {\n  transform: rotate(180deg);\n}\n";
 
 // src/dashboard/server.ts
 var STATIC_FILES = {
@@ -2105,11 +2218,12 @@ var STATIC_FILES = {
   "/styles.css": { content: styles_default, contentType: "text/css; charset=utf-8" }
 };
 var DashboardServer = class {
-  constructor(curriculumSvc2, qaSvc2, vizSvc2, exerciseSvc2, port2) {
+  constructor(curriculumSvc2, qaSvc2, vizSvc2, exerciseSvc2, resourceSvc2, port2) {
     this.curriculumSvc = curriculumSvc2;
     this.qaSvc = qaSvc2;
     this.vizSvc = vizSvc2;
     this.exerciseSvc = exerciseSvc2;
+    this.resourceSvc = resourceSvc2;
     this.port = port2;
   }
   sseClients = /* @__PURE__ */ new Set();
@@ -2193,8 +2307,12 @@ var DashboardServer = class {
       handleTopicExercises(this.exerciseSvc)(req, res);
       return;
     }
+    if (method === "GET" && /^\/api\/topics\/\d+\/resources$/.test(path)) {
+      handleTopicResources(this.resourceSvc)(req, res);
+      return;
+    }
     if (method === "GET" && /^\/api\/topics\/\d+$/.test(path)) {
-      handleTopic(this.curriculumSvc, this.qaSvc)(req, res);
+      handleTopic(this.curriculumSvc, this.qaSvc, this.resourceSvc)(req, res);
       return;
     }
     if (method === "POST" && /^\/api\/exercises\/\d+\/run$/.test(path)) {
@@ -2238,21 +2356,23 @@ var curriculumSvc = new CurriculumService(db);
 var qaSvc = new QAService(db);
 var vizSvc = new VizService(db);
 var exerciseSvc = new ExerciseService(db, fileStore);
+var resourceSvc = new ResourceService(db);
 var port = Number(db.getSetting("dashboard_port") ?? "19282");
-var dashboard = new DashboardServer(curriculumSvc, qaSvc, vizSvc, exerciseSvc, port);
+var dashboard = new DashboardServer(curriculumSvc, qaSvc, vizSvc, exerciseSvc, resourceSvc, port);
 var notify = () => dashboard.notify();
 var server = new McpServer({ name: "study-dash", version: "0.1.0" });
 registerCurriculumTools(server, curriculumSvc, sessions, notify);
 registerQATools(server, qaSvc, sessions, notify);
 registerVizTools(server, vizSvc, sessions, notify);
 registerExerciseTools(server, exerciseSvc, sessions, notify);
+registerResourceTools(server, resourceSvc, sessions, notify);
 dashboard.start();
 async function run() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error(`study-dash MCP server running, dashboard at http://127.0.0.1:${port}`);
 }
-run().catch((err5) => {
-  console.error("Fatal:", err5);
+run().catch((err6) => {
+  console.error("Fatal:", err6);
   process.exit(1);
 });
