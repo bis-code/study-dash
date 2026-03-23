@@ -1,7 +1,4 @@
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import type { CurriculumService } from '../services/curriculum.js';
 import type { QAService } from '../services/qa.js';
 import type { VizService } from '../services/viz.js';
@@ -19,24 +16,13 @@ import {
 } from './api.js';
 
 // ── Embedded static content ──
-// At runtime (tsc output), read from disk.
-// In bundle mode, esbuild --loader:.html=text replaces these with inlined strings.
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const staticDir = join(__dirname, 'static');
-
-function loadStatic(name: string): string {
-  try {
-    return readFileSync(join(staticDir, name), 'utf-8');
-  } catch {
-    return '';
-  }
-}
-
-const indexHtml = loadStatic('index.html');
-const appJs = loadStatic('app.js');
-const stylesCss = loadStatic('styles.css');
+// esbuild --loader:.html=text inlines these as strings at bundle time.
+// @ts-ignore — esbuild text loader
+import indexHtml from './static/index.html';
+// @ts-ignore — esbuild text loader
+import appJs from './static/app.js';
+// @ts-ignore — esbuild text loader
+import stylesCss from './static/styles.css';
 
 const STATIC_FILES: Record<string, { content: string; contentType: string }> = {
   '/': { content: indexHtml, contentType: 'text/html; charset=utf-8' },
