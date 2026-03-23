@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.0...study-dash-v0.2.1) (2026-03-23)
+
+
+### Bug Fixes
+
+* **dashboard:** inline static files via esbuild imports instead of readFileSync ([32c2f44](https://github.com/bis-code/study-dash/commit/32c2f44bc4fbc7f0a14d091afb194d7aa62045b0))
+
 ## [0.2.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.1.0...study-dash-v0.2.0) (2026-03-22)
 
 
