@@ -8,10 +8,12 @@ import { CurriculumService } from './services/curriculum.js';
 import { QAService } from './services/qa.js';
 import { VizService } from './services/viz.js';
 import { ExerciseService } from './services/exercises.js';
+import { ResourceService } from './services/resources.js';
 import { registerCurriculumTools } from './tools/curriculum.js';
 import { registerQATools } from './tools/qa.js';
 import { registerVizTools } from './tools/viz.js';
 import { registerExerciseTools } from './tools/exercises.js';
+import { registerResourceTools } from './tools/resources.js';
 import { DashboardServer } from './dashboard/server.js';
 import type { SessionState } from './types.js';
 
@@ -23,9 +25,10 @@ const curriculumSvc = new CurriculumService(db);
 const qaSvc = new QAService(db);
 const vizSvc = new VizService(db);
 const exerciseSvc = new ExerciseService(db, fileStore);
+const resourceSvc = new ResourceService(db);
 
 const port = Number(db.getSetting('dashboard_port') ?? '19282');
-const dashboard = new DashboardServer(curriculumSvc, qaSvc, vizSvc, exerciseSvc, port);
+const dashboard = new DashboardServer(curriculumSvc, qaSvc, vizSvc, exerciseSvc, resourceSvc, port);
 const notify = () => dashboard.notify();
 
 const server = new McpServer({ name: 'study-dash', version: '0.1.0' });
@@ -34,6 +37,7 @@ registerCurriculumTools(server, curriculumSvc, sessions, notify);
 registerQATools(server, qaSvc, sessions, notify);
 registerVizTools(server, vizSvc, sessions, notify);
 registerExerciseTools(server, exerciseSvc, sessions, notify);
+registerResourceTools(server, resourceSvc, sessions, notify);
 
 dashboard.start();
 

@@ -3,12 +3,14 @@ import type { CurriculumService } from '../services/curriculum.js';
 import type { QAService } from '../services/qa.js';
 import type { VizService } from '../services/viz.js';
 import type { ExerciseService } from '../services/exercises.js';
+import type { ResourceService } from '../services/resources.js';
 import {
   handleSubjects,
   handlePhases,
   handleTopic,
   handleTopicViz,
   handleTopicExercises,
+  handleTopicResources,
   handleRunTests,
   handleSubmitQuiz,
   handleSearch,
@@ -40,6 +42,7 @@ export class DashboardServer {
     private qaSvc: QAService,
     private vizSvc: VizService,
     private exerciseSvc: ExerciseService,
+    private resourceSvc: ResourceService,
     private port: number,
   ) {}
 
@@ -147,9 +150,15 @@ export class DashboardServer {
       return;
     }
 
+    // GET /api/topics/:id/resources
+    if (method === 'GET' && /^\/api\/topics\/\d+\/resources$/.test(path)) {
+      handleTopicResources(this.resourceSvc)(req, res);
+      return;
+    }
+
     // GET /api/topics/:id
     if (method === 'GET' && /^\/api\/topics\/\d+$/.test(path)) {
-      handleTopic(this.curriculumSvc, this.qaSvc)(req, res);
+      handleTopic(this.curriculumSvc, this.qaSvc, this.resourceSvc)(req, res);
       return;
     }
 

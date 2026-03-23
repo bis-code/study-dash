@@ -3,6 +3,7 @@ import type { CurriculumService } from '../services/curriculum.js';
 import type { QAService } from '../services/qa.js';
 import type { VizService } from '../services/viz.js';
 import type { ExerciseService } from '../services/exercises.js';
+import type { ResourceService } from '../services/resources.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ export function handlePhases(curriculumSvc: CurriculumService) {
   };
 }
 
-export function handleTopic(curriculumSvc: CurriculumService, qaSvc: QAService) {
+export function handleTopic(curriculumSvc: CurriculumService, qaSvc: QAService, resourceSvc: ResourceService) {
   return (req: IncomingMessage, res: ServerResponse): void => {
     const id = extractId(req.url ?? '', '/api/topics/');
     if (id === null) {
@@ -77,7 +78,20 @@ export function handleTopic(curriculumSvc: CurriculumService, qaSvc: QAService) 
       return;
     }
     const entries = qaSvc.listEntries(id);
-    writeJSON(res, { ...topic, entries });
+    const resources = resourceSvc.listForTopic(id);
+    writeJSON(res, { ...topic, entries, resources });
+  };
+}
+
+export function handleTopicResources(resourceSvc: ResourceService) {
+  return (req: IncomingMessage, res: ServerResponse): void => {
+    const id = extractId(req.url ?? '', '/api/topics/');
+    if (id === null) {
+      writeError(res, 400, 'Invalid topic ID');
+      return;
+    }
+    const resources = resourceSvc.listForTopic(id);
+    writeJSON(res, resources);
   };
 }
 
