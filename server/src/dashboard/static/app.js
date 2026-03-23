@@ -23,6 +23,7 @@ const state = {
   topicData: null,
   topicViz: [],
   topicExercises: [],
+  topicResources: [],
   searchTimeout: null,
   vizIndex: 0,
   vizStep: 0,
@@ -368,21 +369,24 @@ async function selectTopic(id) {
   state.activeTopic = id;
   state.activeTab = 'qa';
 
-  // Fetch topic detail, viz, and exercises in parallel
+  // Fetch topic detail, viz, exercises, and resources in parallel
   try {
-    const [topicData, viz, exercises] = await Promise.all([
+    const [topicData, viz, exercises, resources] = await Promise.all([
       api(`/api/topics/${id}`),
       api(`/api/topics/${id}/viz`).catch(() => []),
       api(`/api/topics/${id}/exercises`).catch(() => []),
+      api(`/api/topics/${id}/resources`).catch(() => []),
     ]);
 
     state.topicData = topicData;
     state.topicViz = viz || [];
     state.topicExercises = exercises || [];
+    state.topicResources = resources || [];
   } catch {
     state.topicData = null;
     state.topicViz = [];
     state.topicExercises = [];
+    state.topicResources = [];
   }
 
   // Update sidebar active state
@@ -784,29 +788,22 @@ function renderResourcesTab() {
   const container = document.getElementById('tab-resources');
   if (!container) return;
 
-  const data = state.topicData;
-  if (!data) {
-    container.innerHTML = `<div class="empty-state"><p>No resources available</p></div>`;
+  const resources = state.topicResources || [];
+
+  if (resources.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No resources yet</p><p class="text-muted">Ask Claude to add reference links for this topic</p></div>';
     return;
   }
 
-  const entries = data.entries || [];
-  const questions = entries.filter(e => e.kind === 'question').length;
-  const answers = entries.filter(e => e.kind === 'answer').length;
-  const notes = entries.filter(e => e.kind === 'note').length;
-
-  container.innerHTML = `
-    ${data.description ? `<div class="exercise-card"><div style="padding:4px 0"><strong>Description</strong></div><p class="exercise-desc">${escapeHtml(data.description)}</p></div>` : ''}
-    <div class="exercise-card">
-      <div style="padding:4px 0"><strong>Content Summary</strong></div>
-      <div class="exercise-meta" style="margin-top:8px">
-        <span>Questions: ${questions}</span>
-        <span>Answers: ${answers}</span>
-        <span>Notes: ${notes}</span>
-        <span>Visualizations: ${state.topicViz.length}</span>
-        <span>Exercises: ${state.topicExercises.length}</span>
-      </div>
-    </div>`;
+  let html = '<div class="resources-list">';
+  for (const r of resources) {
+    html += '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" class="resource-card">' +
+      '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
+      '<span class="resource-url">' + escapeHtml(r.url) + '</span>' +
+      '</a>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
 }
 
 // --- Navigation ---
