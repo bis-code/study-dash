@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.3.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.2...study-dash-v0.3.0) (2026-03-23)
+
+
+### Features
+
+* **dashboard:** resource cards styling + exercise expand/chevron UX ([69ee400](https://github.com/bis-code/study-dash/commit/69ee400a537e78451cd89cb5e10ac103016c7470))
+* **resources:** add MCP tools, API endpoint, and dashboard routing ([9cfdf23](https://github.com/bis-code/study-dash/commit/9cfdf232e4405b38202117b5643bf5e38eae3611))
+* **resources:** add ResourceService with CRUD and bulk import ([7976221](https://github.com/bis-code/study-dash/commit/7976221e5b54ac74d829d7870f15e39793469dd5))
+* **resources:** render clickable resource links in Resources tab ([cd02cd4](https://github.com/bis-code/study-dash/commit/cd02cd4bfcef9a9c120253683740e783de2c2633))
+* **schema:** add resources table for per-topic reference links ([0c9f362](https://github.com/bis-code/study-dash/commit/0c9f362d6f67f494e7d7514fc09e49b6d5111c20))
+
+
+### Bug Fixes
+
+* **ci:** handle no-op bundle commit gracefully ([1c3049a](https://github.com/bis-code/study-dash/commit/1c3049a4d4c1b706f4019e8648c771edda3430bc))
+
 ## [0.2.2](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.1...study-dash-v0.2.2) (2026-03-23)
 
 
