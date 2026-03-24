@@ -6199,10 +6199,10 @@ class $ZodRegistry {
     }
 }
 // registries
-function registry() {
+function registry$1() {
     return new $ZodRegistry();
 }
-const globalRegistry = /*@__PURE__*/ registry();
+const globalRegistry = /*@__PURE__*/ registry$1();
 
 function _string(Class, params) {
     return new Class({
@@ -22909,27 +22909,101 @@ class VizService {
     }
 }
 
+const registry = new Map();
+registry.set('go', {
+    id: 'go',
+    name: 'Go',
+    extension: '.go',
+    mainFile: 'main.go',
+    testFile: 'main_test.go',
+    testCommand: 'go',
+    testArgs: ['test', '-json', '-count=1', './...'],
+    scaffoldFiles: (subjectSlug, exerciseSlug) => ({
+        'go.mod': `module exercises/${subjectSlug}/${exerciseSlug}\n\ngo 1.21\n`,
+    }),
+});
+registry.set('python', {
+    id: 'python',
+    name: 'Python',
+    extension: '.py',
+    mainFile: 'main.py',
+    testFile: 'test_main.py',
+    testCommand: 'python3',
+    testArgs: ['-m', 'pytest', '--tb=short', '-q', '.'],
+});
+registry.set('rust', {
+    id: 'rust',
+    name: 'Rust',
+    extension: '.rs',
+    mainFile: 'main.rs',
+    testFile: 'main_test.rs',
+    testCommand: 'cargo',
+    testArgs: ['test'],
+    scaffoldFiles: (_subjectSlug, exerciseSlug) => ({
+        'Cargo.toml': `[package]\nname = "${exerciseSlug}"\nversion = "0.1.0"\nedition = "2021"\n`,
+    }),
+});
+const tsScaffold = (_subjectSlug, _exerciseSlug) => ({
+    'package.json': `{"type":"module","scripts":{"test":"vitest run"},"devDependencies":{"vitest":"^2.0.0"}}`,
+});
+registry.set('typescript', {
+    id: 'typescript',
+    name: 'TypeScript',
+    extension: '.ts',
+    mainFile: 'main.ts',
+    testFile: 'main.test.ts',
+    testCommand: 'npx',
+    testArgs: ['vitest', 'run'],
+    scaffoldFiles: tsScaffold,
+});
+registry.set('javascript', {
+    id: 'javascript',
+    name: 'JavaScript',
+    extension: '.ts',
+    mainFile: 'main.ts',
+    testFile: 'main.test.ts',
+    testCommand: 'npx',
+    testArgs: ['vitest', 'run'],
+    scaffoldFiles: tsScaffold,
+});
+function getLanguageConfig(language) {
+    if (!language)
+        return undefined;
+    return registry.get(language.toLowerCase());
+}
+function getExtension(language) {
+    return getLanguageConfig(language)?.extension ?? '.txt';
+}
+function getTestCommand(language) {
+    const config = getLanguageConfig(language);
+    if (!config)
+        return undefined;
+    return { command: config.testCommand, args: config.testArgs };
+}
+function getScaffoldFiles(language, subjectSlug, exerciseSlug) {
+    const config = getLanguageConfig(language);
+    if (!config?.scaffoldFiles)
+        return {};
+    return config.scaffoldFiles(subjectSlug, exerciseSlug);
+}
+function getFileNames(language) {
+    const config = getLanguageConfig(language);
+    return {
+        mainFile: config?.mainFile ?? 'main.txt',
+        testFile: config?.testFile ?? 'main_test.txt',
+    };
+}
+function isLanguageSupported(language) {
+    return getLanguageConfig(language) !== undefined;
+}
+const SUPPORTED_LANGUAGES = Array.from(registry.keys());
+
 const execFileAsync = promisify(execFile);
 function slugify(name) {
     return name
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-}
-function extensionForLanguage(language) {
-    switch (language) {
-        case 'go':
-            return '.go';
-        case 'python':
-            return '.py';
-        case 'rust':
-            return '.rs';
-        case 'javascript':
-        case 'typescript':
-            return '.ts';
-        default:
-            return '.txt';
-    }
 }
 class ExerciseService {
     db;
@@ -22951,25 +23025,20 @@ class ExerciseService {
         if ((type === 'coding' || type === 'project') && (starter_code || test_content)) {
             const subject = this.getSubjectForTopic(topicId);
             if (subject) {
+                const lang = subject.language.toLowerCase();
                 const exerciseSlug = slugify(title);
-                const ext = extensionForLanguage(subject.language.toLowerCase());
+                const { mainFile, testFile } = getFileNames(lang);
                 const files = {};
-                if (starter_code) {
-                    files[`main${ext}`] = starter_code;
-                }
-                if (test_content) {
-                    files[`main_test${ext}`] = test_content;
-                }
+                if (starter_code)
+                    files[mainFile] = starter_code;
+                if (test_content)
+                    files[testFile] = test_content;
                 files['README.md'] = `# ${title}\n\n${description}`;
-                // Add go.mod for Go exercises so `go test` works
-                if (subject.language.toLowerCase() === 'go') {
-                    const moduleName = `exercises/${subject.slug}/${exerciseSlug}`;
-                    files['go.mod'] = `module ${moduleName}\n\ngo 1.21\n`;
-                }
+                // Add scaffold files (go.mod, Cargo.toml, etc.)
+                const scaffold = getScaffoldFiles(lang, subject.slug, exerciseSlug);
+                Object.assign(files, scaffold);
                 const filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, files);
-                this.db.raw
-                    .prepare('UPDATE exercises SET file_path = ? WHERE id = ?')
-                    .run(filePath, exerciseId);
+                this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
             }
         }
         return this.db.raw
@@ -22987,14 +23056,8 @@ class ExerciseService {
         const subject = this.getSubjectForTopic(exercise.topic_id);
         if (!subject)
             throw new Error(`No subject found for exercise ${exerciseId}`);
-        const commandMap = {
-            go: { command: 'go', args: ['test', '-json', '-count=1', './...'] },
-            python: { command: 'python3', args: ['-m', 'pytest', '--tb=short', '-q', '.'] },
-            rust: { command: 'cargo', args: ['test'] },
-            javascript: { command: 'npx', args: ['vitest', 'run'] },
-            typescript: { command: 'npx', args: ['vitest', 'run'] },
-        };
-        const config = commandMap[subject.language.toLowerCase()];
+        const lang = subject.language.toLowerCase();
+        const config = getTestCommand(lang);
         if (!config)
             throw new Error(`Unsupported language: ${subject.language}`);
         let stdout = '';
@@ -23133,9 +23196,7 @@ class ExerciseService {
             return undefined;
         const subject = this.getSubjectForTopic(exercise.topic_id);
         const lang = subject?.language.toLowerCase() ?? '';
-        const ext = extensionForLanguage(lang);
-        const mainFile = `main${ext}`;
-        const testFile = `main_test${ext}`;
+        const { mainFile, testFile } = getFileNames(lang);
         let main = '';
         let test = '';
         if (exercise.file_path) {
@@ -23160,22 +23221,22 @@ class ExerciseService {
         if (!subject)
             throw new Error(`No subject found for exercise ${exerciseId}`);
         const lang = subject.language.toLowerCase();
-        const ext = extensionForLanguage(lang);
+        const { mainFile, testFile } = getFileNames(lang);
         let filePath = exercise.file_path;
         if (!filePath) {
             const exerciseSlug = slugify(exercise.title);
             filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, {});
             this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
         }
-        if (lang === 'go') {
-            const goModPath = join(filePath, 'go.mod');
-            if (!existsSync(goModPath)) {
-                const exerciseSlug = slugify(exercise.title);
-                writeFileSync(goModPath, `module exercises/${subject.slug}/${exerciseSlug}\n\ngo 1.21\n`, 'utf-8');
-            }
+        // Add scaffold files if missing
+        const scaffold = getScaffoldFiles(lang, subject.slug, slugify(exercise.title));
+        for (const [name, content] of Object.entries(scaffold)) {
+            const p = join(filePath, name);
+            if (!existsSync(p))
+                writeFileSync(p, content, 'utf-8');
         }
-        writeFileSync(join(filePath, `main${ext}`), main, 'utf-8');
-        writeFileSync(join(filePath, `main_test${ext}`), test, 'utf-8');
+        writeFileSync(join(filePath, mainFile), main, 'utf-8');
+        writeFileSync(join(filePath, testFile), test, 'utf-8');
     }
     migrateFileExtensions() {
         const exercises = this.db.raw
@@ -23186,7 +23247,7 @@ class ExerciseService {
             const subject = this.getSubjectForTopic(exercise.topic_id);
             if (!subject)
                 continue;
-            const ext = extensionForLanguage(subject.language.toLowerCase());
+            const ext = getExtension(subject.language.toLowerCase());
             if (ext === '.txt')
                 continue;
             const dir = exercise.file_path;
@@ -23204,6 +23265,10 @@ class ExerciseService {
             }
         }
         return migrated;
+    }
+    getSubjectLanguage(topicId) {
+        const subject = this.getSubjectForTopic(topicId);
+        return subject?.language ?? '';
     }
     getSubjectForTopic(topicId) {
         return this.db.raw
@@ -23528,6 +23593,16 @@ function registerExerciseTools(server, svc, sessions, notify) {
         const session = getSession$1(sessions, session_id);
         if (session.topicId === null) {
             return err$1('No active topic. Use learn_set_topic first.');
+        }
+        // Gate coding/project exercises for subjects without a language
+        if (type === 'coding' || type === 'project') {
+            const lang = svc.getSubjectLanguage(session.topicId);
+            if (!lang) {
+                return err$1('Coding/project exercises require a subject with a programming language. Use quiz or assignment type instead.');
+            }
+            if (!isLanguageSupported(lang)) {
+                return err$1(`Unsupported language: "${lang}". Supported: ${SUPPORTED_LANGUAGES.join(', ')}`);
+            }
         }
         const exercise = svc.createExercise(session.topicId, {
             title,
