@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.5.1...study-dash-v0.6.0) (2026-03-24)
+
+
+### Features
+
+* **dashboard:** make exercise editor language-aware ([f580244](https://github.com/bis-code/study-dash/commit/f5802442c5bd3733b841bdda30aa9a2c6b55129c))
+* **exercises:** gate coding exercises for non-coding subjects ([530c0aa](https://github.com/bis-code/study-dash/commit/530c0aa9d394c156620e66c593483ca93f0d97f7))
+* language registry — consolidate language-specific logic ([898f46f](https://github.com/bis-code/study-dash/commit/898f46f5d15ac90adb8dedcb04e9a04e1d73a065))
+* **languages:** create language registry with Go, Python, Rust, TypeScript ([be37165](https://github.com/bis-code/study-dash/commit/be37165d14d7a1a32f094f9cf3ff3c5acbf70858))
+* **tools:** add learn_list_subjects, learn_submit_quiz, learn_get/save_exercise_files ([a3b2c31](https://github.com/bis-code/study-dash/commit/a3b2c31639770126d24fe89620f057cfcac29dbc))
+
+
+### Bug Fixes
+
+* comprehensive bugfix — cross-platform MCP, Go exercises, quiz rendering, missing tools ([2082b4c](https://github.com/bis-code/study-dash/commit/2082b4c25aee197e83f24063b1f38229345e79df))
+* **dashboard:** fix quiz rendering — handle QuizPayload object shape ([26102d4](https://github.com/bis-code/study-dash/commit/26102d466de2d1cc27ee8b232c2778874dee608f))
+* **dashboard:** show exercise test results on initial load and after run ([2d15210](https://github.com/bis-code/study-dash/commit/2d152101c189923872529fa31297e801fcd76e1f))
+* **exercises:** generate go.mod for Go exercises so go test works ([1b1d060](https://github.com/bis-code/study-dash/commit/1b1d0605b482fe92601d3cc172154774e9db820c))
+* **packaging:** include start.sh, remove pre-built better-sqlite3 from npm tarball ([cebe610](https://github.com/bis-code/study-dash/commit/cebe610a7493f86498c75ba617e7e7f27fb5826a))
+
 ## [0.5.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.5.0...study-dash-v0.5.1) (2026-03-24)
 
 

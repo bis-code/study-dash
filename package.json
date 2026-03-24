@@ -1,6 +1,6 @@
 {
   "name": "@bis-code/study-dash",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Claude Code plugin for structured learning on any subject — dashboard, Q&A logging, visualizations, exercises",
   "license": "MIT",
   "author": "Ioan-Sorin Baicoianu <baicoianuioansorin@gmail.com>",
