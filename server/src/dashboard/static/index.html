@@ -82,6 +82,32 @@
       <div id="tab-resources" class="tab-panel"></div>
     </div>
 
+    <!-- ==================== PAGE: EXERCISE EDITOR ==================== -->
+    <div id="page-exercise-editor" class="page">
+      <div class="exercise-editor">
+        <div class="exercise-editor-problem" id="editor-problem"></div>
+        <div class="exercise-editor-right">
+          <div class="exercise-editor-code">
+            <div class="editor-tabs">
+              <button class="editor-tab active" id="tab-main" onclick="switchEditorTab('main')">main.go</button>
+              <button class="editor-tab" id="tab-test" onclick="switchEditorTab('test')">main_test.go</button>
+              <button class="editor-back-btn" onclick="closeExerciseEditor()">&larr; Back</button>
+            </div>
+            <div id="editor-container"></div>
+          </div>
+          <div class="exercise-editor-output" id="editor-output">
+            <div class="editor-output-header">
+              <span>Test Output</span>
+              <button class="editor-run-btn" id="editor-run-btn" onclick="runTestsFromEditor()">Run Tests</button>
+            </div>
+            <div class="editor-output-body" id="editor-output-body">
+              <span class="text-muted">Click "Run Tests" or press Ctrl+Enter</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== PAGE: SEARCH ==================== -->
     <div id="page-search" class="page">
       <div class="page-header">
