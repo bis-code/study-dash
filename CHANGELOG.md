@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.4.1...study-dash-v0.5.0) (2026-03-24)
+
+
+### Features
+
+* **dashboard:** add exercise editor HTML and CSS ([9112ac2](https://github.com/bis-code/study-dash/commit/9112ac2b563e78d07f8e059f7996aef126df7204))
+* **dashboard:** add exercise editor with CodeMirror 6 and test runner ([5b08b4e](https://github.com/bis-code/study-dash/commit/5b08b4eedf530029812595fd7059f4501a614701))
+* **dashboard:** add exercise files API endpoints and startup migration ([70391fd](https://github.com/bis-code/study-dash/commit/70391fd840a0a136c9b319b72660da92965fbec8))
+* **exercises:** add file read/save methods and .txt migration ([63c9741](https://github.com/bis-code/study-dash/commit/63c9741cb11fe8788fcc962ba61673256a0a2f64))
+
+
+### Bug Fixes
+
+* **exercises:** normalize language to lowercase for file extensions and test runners ([59a83a4](https://github.com/bis-code/study-dash/commit/59a83a4240753fa5cde4aeee509cd08fc136fa5a))
+
 ## [0.4.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.4.0...study-dash-v0.4.1) (2026-03-24)
 
 
