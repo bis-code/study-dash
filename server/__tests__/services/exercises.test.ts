@@ -322,6 +322,22 @@ describe('ExerciseService', () => {
     expect(existsSync(join(dir, 'README.md'))).toBe(true);
   });
 
+  it('createExercise — Go coding type: creates go.mod in exercise directory', () => {
+    const exercise = svc.createExercise(topicId, {
+      title: 'Go Mod Test',
+      type: 'coding',
+      description: 'Test go.mod creation',
+      starter_code: 'package main\n\nfunc Hello() string { return "hello" }',
+      test_content: 'package main\n\nimport "testing"\n\nfunc TestHello(t *testing.T) {\n\tif Hello() != "hello" { t.Fatal("wrong") }\n}',
+    });
+
+    expect(exercise.file_path).toBeTruthy();
+    expect(existsSync(join(exercise.file_path, 'go.mod'))).toBe(true);
+    const goMod = readFileSync(join(exercise.file_path, 'go.mod'), 'utf-8');
+    expect(goMod).toContain('module');
+    expect(goMod).toContain('go 1.21');
+  });
+
   it('createExercise — language with mixed case: writes files with correct extension', () => {
     // Regression: subjects created with "Go" (capitalized) caused .txt extensions
     const subject = curriculum.createSubject('Python Prep', 'Python', 'manual');

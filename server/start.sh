@@ -5,7 +5,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-if [ ! -d "$SCRIPT_DIR/node_modules/better-sqlite3" ]; then
+if ! node -e "require('$SCRIPT_DIR/node_modules/better-sqlite3')" 2>/dev/null; then
   npm install --prefix "$SCRIPT_DIR" --silent 2>/dev/null
 fi
 
