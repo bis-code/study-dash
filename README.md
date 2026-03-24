@@ -69,6 +69,7 @@ Mobile-responsive: bottom nav on phones, sidebar on desktop.
 | `learn_mark_done` | Mark a topic as completed |
 | `learn_get_progress` | Get completion stats |
 | `learn_get_curriculum` | Get the full topic tree |
+| `learn_list_subjects` | List all available subjects |
 
 ### Q&A
 | Tool | Description |
@@ -89,6 +90,9 @@ Mobile-responsive: bottom nav on phones, sidebar on desktop.
 | `learn_create_exercise` | Create a coding exercise, quiz, project, or assignment |
 | `learn_run_tests` | Execute tests and return pass/fail results |
 | `learn_get_exercises` | List exercises for the current topic |
+| `learn_submit_quiz` | Submit quiz answers and get scored results |
+| `learn_get_exercise_files` | Get source code files for a coding exercise |
+| `learn_save_exercise_files` | Save updated source code for a coding exercise |
 
 ## Hooks
 
@@ -110,10 +114,24 @@ Mobile-responsive: bottom nav on phones, sidebar on desktop.
 
 | Type | Validation |
 |------|-----------|
-| **Coding** | Real test execution (`go test`, `pytest`, `cargo test`, `vitest`) |
+| **Coding** | Real test execution — language-aware (`go test`, `pytest`, `cargo test`, `vitest`) |
 | **Quiz** | Multiple choice, true/false, fill-in-the-blank — scored in dashboard |
 | **Project** | Larger exercises with acceptance criteria and test files |
 | **Assignment** | Imported from school PDFs with grading criteria |
+
+## Supported Languages
+
+Coding exercises use the correct file naming, test runner, and scaffold files per language. Adding a new language is a single entry in `server/src/languages.ts`.
+
+| Language | Files | Test Runner | Scaffold |
+|----------|-------|-------------|----------|
+| Go | `main.go` + `main_test.go` | `go test` | `go.mod` |
+| Python | `main.py` + `test_main.py` | `pytest` | — |
+| Rust | `main.rs` + `main_test.rs` | `cargo test` | `Cargo.toml` |
+| TypeScript | `main.ts` + `main.test.ts` | `vitest` | `package.json` |
+| JavaScript | `main.ts` + `main.test.ts` | `vitest` | `package.json` |
+
+Non-coding subjects (no language set) support quizzes and assignments only.
 
 ## Settings
 
@@ -129,6 +147,7 @@ Single Node.js process with layered internals:
 ```
 Transport:  MCP Tools (stdio) + HTTP API (dashboard)
 Services:   CurriculumService | QAService | VizService | ExerciseService
+Config:     Language Registry (languages.ts)
 Storage:    SQLite (better-sqlite3) + File System (exercises)
 ```
 
