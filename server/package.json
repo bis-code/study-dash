@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "build": "tsc && chmod +x dist/index.js",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bundle.mjs --external:better-sqlite3 --external:zod --external:@modelcontextprotocol/sdk --loader:.html=text --loader:.css=text --loader:.js=text",
+    "bundle": "node build.mjs",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -22,9 +22,16 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.2",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-typescript": "^12.3.0",
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22",
     "esbuild": "^0.27.4",
+    "rollup": "^4.60.0",
+    "rollup-plugin-string": "^3.0.0",
+    "tslib": "^2.8.1",
     "typescript": "^5.3.3",
     "vitest": "^2.1.8"
   }
