@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.3.0...study-dash-v0.3.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **bundle:** switch from esbuild to rollup for zod 3.25 compatibility ([ab7a57d](https://github.com/bis-code/study-dash/commit/ab7a57d1ad3e7129428125b0777c5d88ed265c69))
+
 ## [0.3.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.2.2...study-dash-v0.3.0) (2026-03-23)
 
 
