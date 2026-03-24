@@ -91,7 +91,33 @@
             <div class="editor-tabs">
               <button class="editor-tab active" id="tab-main" onclick="switchEditorTab('main')">main</button>
               <button class="editor-tab" id="tab-test" onclick="switchEditorTab('test')">test</button>
+              <button class="editor-add-test-btn" id="editor-add-test-btn" onclick="toggleAddTestForm()">+ Add Test</button>
+              <button class="editor-vscode-btn" id="editor-vscode-btn" onclick="openInVSCode()" title="Open in VS Code">VS Code</button>
               <button class="editor-back-btn" onclick="closeExerciseEditor()">&larr; Back</button>
+            </div>
+            <div id="add-test-form" class="add-test-form hidden">
+              <div class="form-row">
+                <input type="text" id="test-name-input" placeholder="Test name (e.g., empty slice returns -1)">
+              </div>
+              <div class="form-row">
+                <textarea id="test-input-input" placeholder="Input as Go literal (e.g., []int{}, 5)" rows="2"></textarea>
+              </div>
+              <div class="form-row">
+                <textarea id="test-expected-input" placeholder="Expected result (e.g., -1)" rows="2"></textarea>
+              </div>
+              <div class="form-row">
+                <select id="test-assertion-type">
+                  <option value="equals">equals</option>
+                  <option value="deep equals">deep equals</option>
+                  <option value="error expected">error expected</option>
+                  <option value="no error">no error</option>
+                  <option value="contains">contains</option>
+                </select>
+              </div>
+              <div class="form-actions">
+                <button class="btn-primary" onclick="addTestCase()">Add</button>
+                <button onclick="toggleAddTestForm()">Cancel</button>
+              </div>
             </div>
             <div id="editor-container"></div>
           </div>
