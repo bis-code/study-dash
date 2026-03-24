@@ -233,4 +233,32 @@ describe('ExerciseService', () => {
     const readme = readFileSync(join(exercise.file_path, 'README.md'), 'utf-8');
     expect(readme).toContain('Write hello world');
   });
+
+  it('createExercise — language with mixed case: writes files with correct extension', () => {
+    // Regression: subjects created with "Go" (capitalized) caused .txt extensions
+    const subject = curriculum.createSubject('Python Prep', 'Python', 'manual');
+    curriculum.importCurriculum(subject.id, [
+      {
+        name: 'Phase 1',
+        description: 'Basics',
+        topics: [{ name: 'Lists', description: 'Python lists' }],
+      },
+    ]);
+    const phase = curriculum.getCurriculum(subject.id)[0];
+    const pyTopicId = phase.topics[0].id;
+
+    const exercise = svc.createExercise(pyTopicId, {
+      title: 'List Reversal',
+      type: 'coding',
+      description: 'Reverse a list',
+      starter_code: 'def reverse_list(lst):\n    pass',
+      test_content: 'from main import reverse_list\n\ndef test_reverse():\n    assert reverse_list([1,2,3]) == [3,2,1]',
+    });
+
+    expect(exercise.file_path).toBeTruthy();
+    expect(existsSync(join(exercise.file_path, 'main.py'))).toBe(true);
+    expect(existsSync(join(exercise.file_path, 'main_test.py'))).toBe(true);
+    // Should NOT create .txt files
+    expect(existsSync(join(exercise.file_path, 'main.txt'))).toBe(false);
+  });
 });

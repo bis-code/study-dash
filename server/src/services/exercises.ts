@@ -86,7 +86,7 @@ export class ExerciseService {
       const subject = this.getSubjectForTopic(topicId);
       if (subject) {
         const exerciseSlug = slugify(title);
-        const ext = extensionForLanguage(subject.language);
+        const ext = extensionForLanguage(subject.language.toLowerCase());
 
         const files: Record<string, string> = {};
         if (starter_code) {
@@ -129,7 +129,7 @@ export class ExerciseService {
       typescript: { command: 'npx', args: ['vitest', 'run'] },
     };
 
-    const config = commandMap[subject.language];
+    const config = commandMap[subject.language.toLowerCase()];
     if (!config) throw new Error(`Unsupported language: ${subject.language}`);
 
     let stdout = '';
