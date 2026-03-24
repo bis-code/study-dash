@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: server
+
+      - name: Build
+        run: npm run build
+        working-directory: server
+
+      - name: Run tests
+        run: npm test
+        working-directory: server
+
+      - name: Bundle
+        run: npm run bundle
+        working-directory: server
+
+      - name: Validate plugin structure
+        run: |
+          test -f .claude-plugin/plugin.json && echo "plugin.json: OK"
+          test -f .mcp.json && echo ".mcp.json: OK"
+          test -f hooks/hooks.json && echo "hooks.json: OK"
+          ls commands/*.md > /dev/null && echo "commands: OK"
+          ls skills/*/SKILL.md > /dev/null && echo "skills: OK"
+          ls rules/*.md > /dev/null && echo "rules: OK"
+          test -f server/dist/bundle.mjs && echo "bundle: OK"
+
+      - name: Commit updated bundle if changed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f server/dist/bundle.mjs
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: rebuild bundle.mjs [skip ci]"
+            git push
+          else
+            echo "Bundle unchanged, nothing to commit"
+          fi
