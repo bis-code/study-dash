@@ -799,13 +799,54 @@ function renderResourcesTab() {
 
   let html = '<div class="resources-list">';
   for (const r of resources) {
-    html += '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" class="resource-card">' +
-      '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
-      '<span class="resource-url">' + escapeHtml(r.url) + '</span>' +
+    const isFile = r.url.startsWith('file://');
+    const isPdf = isFile && r.url.toLowerCase().endsWith('.pdf');
+
+    if (isPdf) {
+      html += '<div class="resource-card resource-pdf">' +
+        '<div class="resource-pdf-header" data-resource-id="' + r.id + '">' +
+          '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
+          '<span class="resource-badge">PDF</span>' +
+          '<span class="resource-chevron">&#9660;</span>' +
+        '</div>' +
+        '<div class="resource-pdf-viewer" id="pdf-viewer-' + r.id + '" style="display:none;">' +
+          '<iframe data-src="/api/resources/' + r.id + '/file" type="application/pdf"></iframe>' +
+        '</div>' +
+      '</div>';
+    } else if (isFile) {
+      html += '<div class="resource-card">' +
+        '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
+        '<span class="resource-url">' + escapeHtml(r.url) + '</span>' +
+      '</div>';
+    } else {
+      html += '<a href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" class="resource-card">' +
+        '<span class="resource-title">' + escapeHtml(r.title) + '</span>' +
+        '<span class="resource-url">' + escapeHtml(r.url) + '</span>' +
       '</a>';
+    }
   }
   html += '</div>';
+
   container.innerHTML = html;
+
+  // Attach expand/collapse handlers for PDF viewers (lazy-load on first expand)
+  container.querySelectorAll('.resource-pdf-header').forEach(header => {
+    header.addEventListener('click', () => {
+      const id = header.dataset.resourceId;
+      const viewer = document.getElementById('pdf-viewer-' + id);
+      const chevron = header.querySelector('.resource-chevron');
+      if (viewer) {
+        const isOpen = viewer.style.display !== 'none';
+        viewer.style.display = isOpen ? 'none' : 'block';
+        if (chevron) chevron.classList.toggle('open', !isOpen);
+        // Lazy-load: set iframe src on first expand
+        const iframe = viewer.querySelector('iframe');
+        if (!isOpen && iframe && !iframe.src) {
+          iframe.src = iframe.dataset.src;
+        }
+      }
+    });
+  });
 }
 
 // --- Navigation ---
