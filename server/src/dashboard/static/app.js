@@ -27,6 +27,11 @@ const state = {
   searchTimeout: null,
   vizIndex: 0,
   vizStep: 0,
+  editorExercise: null,
+  editorActiveTab: 'main',
+  editorMainContent: '',
+  editorTestContent: '',
+  editorView: null,
 };
 
 // --- API Helper ---
@@ -674,7 +679,8 @@ function renderExercisesTab() {
 
       detailHtml += `
         <div class="exercise-actions">
-          <button class="exercise-action-btn btn-primary" onclick="runExercise(${ex.id}, ${i})">Run Tests</button>
+          <button class="exercise-action-btn btn-primary" onclick="openExerciseEditor(${ex.id})">Open Editor</button>
+          <button class="exercise-action-btn" onclick="runExercise(${ex.id}, ${i})">Run Tests</button>
         </div>`;
     }
 
@@ -847,6 +853,186 @@ function renderResourcesTab() {
       }
     });
   });
+}
+
+// --- CodeMirror Lazy Loading ---
+async function loadCodeMirror() {
+  if (window._cm) return window._cm;
+
+  const [
+    { EditorView, basicSetup },
+    { EditorState },
+    { go },
+    { oneDark },
+    { keymap },
+  ] = await Promise.all([
+    import('https://esm.sh/codemirror@6.65.7'),
+    import('https://esm.sh/@codemirror/state@6.5.2'),
+    import('https://esm.sh/@codemirror/lang-go@6.0.1'),
+    import('https://esm.sh/@codemirror/theme-one-dark@6.1.2'),
+    import('https://esm.sh/@codemirror/view@6.36.5'),
+  ]);
+
+  window._cm = { EditorView, EditorState, basicSetup, go, oneDark, keymap };
+  return window._cm;
+}
+
+// --- Exercise Editor ---
+async function openExerciseEditor(exerciseId) {
+  const [exerciseList, files] = await Promise.all([
+    api(`/api/topics/${state.activeTopic}/exercises`),
+    api(`/api/exercises/${exerciseId}/files`),
+  ]);
+
+  const exercise = exerciseList.find(e => e.id === exerciseId);
+  if (!exercise || !files) return;
+
+  state.editorExercise = exercise;
+  state.editorMainContent = files.main;
+  state.editorTestContent = files.test;
+  state.editorActiveTab = 'main';
+
+  const problemEl = document.getElementById('editor-problem');
+  if (problemEl) {
+    problemEl.innerHTML =
+      '<h2>' + escapeHtml(exercise.title) + '</h2>' +
+      '<div class="exercise-meta">' +
+        (exercise.difficulty ? '<span class="badge">' + escapeHtml(exercise.difficulty) + '</span>' : '') +
+        (exercise.est_minutes ? '<span class="badge">' + exercise.est_minutes + ' min</span>' : '') +
+        (exercise.status ? '<span class="badge ' + escapeHtml(exercise.status) + '">' + escapeHtml(exercise.status) + '</span>' : '') +
+      '</div>' +
+      '<div class="description">' + marked.parse(exercise.description || '') + '</div>';
+  }
+
+  const tabMain = document.getElementById('tab-main');
+  const tabTest = document.getElementById('tab-test');
+  if (tabMain) tabMain.textContent = files.mainFile || 'main.go';
+  if (tabTest) tabTest.textContent = files.testFile || 'main_test.go';
+
+  const outputBody = document.getElementById('editor-output-body');
+  if (outputBody) outputBody.innerHTML = '<span class="text-muted">Click "Run Tests" or press Ctrl+Enter</span>';
+
+  showPage('exercise-editor');
+
+  const cm = await loadCodeMirror();
+  const container = document.getElementById('editor-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const runTestsKeymap = cm.keymap.of([{
+    key: 'Mod-Enter',
+    run: () => { runTestsFromEditor(); return true; },
+  }]);
+
+  state.editorView = new cm.EditorView({
+    state: cm.EditorState.create({
+      doc: state.editorMainContent,
+      extensions: [cm.basicSetup, cm.go(), cm.oneDark, runTestsKeymap],
+    }),
+    parent: container,
+  });
+}
+
+function switchEditorTab(tab) {
+  if (!state.editorView || tab === state.editorActiveTab) return;
+
+  const currentContent = state.editorView.state.doc.toString();
+  if (state.editorActiveTab === 'main') {
+    state.editorMainContent = currentContent;
+  } else {
+    state.editorTestContent = currentContent;
+  }
+
+  state.editorActiveTab = tab;
+
+  const newContent = tab === 'main' ? state.editorMainContent : state.editorTestContent;
+  state.editorView.dispatch({
+    changes: {
+      from: 0,
+      to: state.editorView.state.doc.length,
+      insert: newContent,
+    },
+  });
+
+  document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+  const activeTab = document.getElementById(tab === 'main' ? 'tab-main' : 'tab-test');
+  if (activeTab) activeTab.classList.add('active');
+}
+
+function closeExerciseEditor() {
+  if (state.editorView) {
+    state.editorView.destroy();
+    state.editorView = null;
+  }
+  state.editorExercise = null;
+  showPage('topic');
+  switchTab('exercises');
+}
+
+async function runTestsFromEditor() {
+  if (!state.editorExercise) return;
+
+  const exerciseId = state.editorExercise.id;
+  const btn = document.getElementById('editor-run-btn');
+  const outputBody = document.getElementById('editor-output-body');
+
+  if (btn) { btn.textContent = 'Running...'; btn.disabled = true; }
+  if (outputBody) outputBody.innerHTML = '<span class="text-muted">Running tests...</span>';
+
+  if (state.editorView) {
+    const content = state.editorView.state.doc.toString();
+    if (state.editorActiveTab === 'main') {
+      state.editorMainContent = content;
+    } else {
+      state.editorTestContent = content;
+    }
+  }
+
+  try {
+    await fetch(`/api/exercises/${exerciseId}/files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ main: state.editorMainContent, test: state.editorTestContent }),
+    });
+
+    const res = await fetch(`/api/exercises/${exerciseId}/run`, { method: 'POST' });
+    const data = await res.json();
+
+    if (data.error) {
+      outputBody.innerHTML = '<div class="test-result-row fail"><span class="test-icon">&#10007;</span><span class="test-name">Error: ' + escapeHtml(data.error) + '</span></div>';
+    } else if (Array.isArray(data)) {
+      const passed = data.filter(r => r.passed).length;
+      const total = data.length;
+      const allPassed = passed === total;
+
+      let html = '';
+      for (const r of data) {
+        const cls = r.passed ? 'pass' : 'fail';
+        const icon = r.passed ? '&#10003;' : '&#10007;';
+        html += '<div class="test-result-row ' + cls + '">' +
+          '<span class="test-icon">' + icon + '</span>' +
+          '<span class="test-name">' + escapeHtml(r.test_name) + '</span>' +
+        '</div>';
+        if (r.output && !r.passed) {
+          html += '<div class="test-result-output">' + escapeHtml(r.output) + '</div>';
+        }
+      }
+
+      html += '<div class="editor-progress-bar">' +
+        '<span>' + passed + '/' + total + ' passed</span>' +
+        '<div class="editor-progress-fill">' +
+          '<div class="editor-progress-fill-inner ' + (allPassed ? 'green' : 'red') + '" style="width:' + (total > 0 ? Math.round(passed / total * 100) : 0) + '%"></div>' +
+        '</div>' +
+      '</div>';
+
+      outputBody.innerHTML = html;
+      state.editorExercise.status = allPassed ? 'passed' : 'failed';
+    }
+  } catch (err) {
+    if (outputBody) outputBody.innerHTML = '<div class="test-result-row fail"><span class="test-icon">&#10007;</span><span class="test-name">Error: ' + escapeHtml(String(err)) + '</span></div>';
+  } finally {
+    if (btn) { btn.textContent = 'Run Tests'; btn.disabled = false; }
+  }
 }
 
 // --- Navigation ---
