@@ -107,6 +107,12 @@ export class ExerciseService {
         }
         files['README.md'] = `# ${title}\n\n${description}`;
 
+        // Add go.mod for Go exercises so `go test` works
+        if (subject.language.toLowerCase() === 'go') {
+          const moduleName = `exercises/${subject.slug}/${exerciseSlug}`;
+          files['go.mod'] = `module ${moduleName}\n\ngo 1.21\n`;
+        }
+
         const filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, files);
 
         this.db.raw
@@ -326,6 +332,14 @@ export class ExerciseService {
       const exerciseSlug = slugify(exercise.title);
       filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, {});
       this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
+    }
+
+    if (lang === 'go') {
+      const goModPath = join(filePath, 'go.mod');
+      if (!existsSync(goModPath)) {
+        const exerciseSlug = slugify(exercise.title);
+        writeFileSync(goModPath, `module exercises/${subject.slug}/${exerciseSlug}\n\ngo 1.21\n`, 'utf-8');
+      }
     }
 
     writeFileSync(join(filePath, `main${ext}`), main, 'utf-8');
