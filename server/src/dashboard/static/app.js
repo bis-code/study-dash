@@ -32,6 +32,9 @@ const state = {
   editorMainContent: '',
   editorTestContent: '',
   editorView: null,
+  editorFilePath: '',
+  editorMainFile: '',
+  editorTestFile: '',
 };
 
 // --- API Helper ---
@@ -650,7 +653,7 @@ function renderExercisesTab() {
         `).join('');
         detailHtml += `
           <div class="exercise-actions">
-            <button class="exercise-action-btn btn-primary" onclick="submitQuiz(${ex.id}, ${i})">Submit Answers</button>
+            <button class="exercise-action-btn btn-primary" onclick="event.stopPropagation(); submitQuiz(${ex.id}, ${i})">Submit Answers</button>
           </div>`;
       }
     }
@@ -680,14 +683,14 @@ function renderExercisesTab() {
 
       detailHtml += `
         <div class="exercise-actions">
-          <button class="exercise-action-btn btn-primary" onclick="openExerciseEditor(${ex.id})">Open Editor</button>
-          <button class="exercise-action-btn" onclick="runExercise(${ex.id}, ${i})">Run Tests</button>
+          <button class="exercise-action-btn btn-primary" onclick="event.stopPropagation(); openExerciseEditor(${ex.id})">Open Editor</button>
+          <button class="exercise-action-btn" onclick="event.stopPropagation(); runExercise(${ex.id}, ${i})">Run Tests</button>
         </div>`;
     }
 
     return `
-      <div class="exercise-card expandable" id="exercise-${i}">
-        <div class="exercise-header" onclick="toggleExercise(${i})">
+      <div class="exercise-card expandable" id="exercise-${i}" onclick="toggleExercise(${i})">
+        <div class="exercise-header">
           <span class="exercise-title">${escapeHtml(ex.title)}</span>
           <span class="exercise-type ${escapeHtml(ex.type)}">${escapeHtml(ex.type)}</span>
           <span class="exercise-expand-icon">&#9660;</span>
@@ -867,20 +870,20 @@ async function loadCodeMirror(language) {
       { oneDark },
       { keymap },
     ] = await Promise.all([
-      import('https://esm.sh/codemirror@6.65.7'),
-      import('https://esm.sh/@codemirror/state@6.5.2'),
-      import('https://esm.sh/@codemirror/theme-one-dark@6.1.2'),
-      import('https://esm.sh/@codemirror/view@6.36.5'),
+      import('https://esm.sh/codemirror@6.0.1'),
+      import('https://esm.sh/@codemirror/state'),
+      import('https://esm.sh/@codemirror/theme-one-dark'),
+      import('https://esm.sh/@codemirror/view'),
     ]);
     window._cmBase = { EditorView, EditorState, basicSetup, oneDark, keymap };
   }
 
   const langMap = {
-    go: () => import('https://esm.sh/@codemirror/lang-go@6.0.1').then(m => m.go()),
-    python: () => import('https://esm.sh/@codemirror/lang-python@6.1.6').then(m => m.python()),
-    rust: () => import('https://esm.sh/@codemirror/lang-rust@6.0.1').then(m => m.rust()),
-    javascript: () => import('https://esm.sh/@codemirror/lang-javascript@6.2.2').then(m => m.javascript({ typescript: true })),
-    typescript: () => import('https://esm.sh/@codemirror/lang-javascript@6.2.2').then(m => m.javascript({ typescript: true })),
+    go: () => import('https://esm.sh/@codemirror/lang-go').then(m => m.go()),
+    python: () => import('https://esm.sh/@codemirror/lang-python').then(m => m.python()),
+    rust: () => import('https://esm.sh/@codemirror/lang-rust').then(m => m.rust()),
+    javascript: () => import('https://esm.sh/@codemirror/lang-javascript').then(m => m.javascript({ typescript: true })),
+    typescript: () => import('https://esm.sh/@codemirror/lang-javascript').then(m => m.javascript({ typescript: true })),
   };
 
   const langFn = langMap[language] || langMap['go'];
@@ -903,6 +906,9 @@ async function openExerciseEditor(exerciseId) {
   state.editorMainContent = files.main;
   state.editorTestContent = files.test;
   state.editorActiveTab = 'main';
+  state.editorFilePath = files.filePath || '';
+  state.editorMainFile = files.mainFile || 'main.go';
+  state.editorTestFile = files.testFile || 'main_test.go';
 
   const problemEl = document.getElementById('editor-problem');
   if (problemEl) {
@@ -920,6 +926,12 @@ async function openExerciseEditor(exerciseId) {
   const tabTest = document.getElementById('tab-test');
   if (tabMain) tabMain.textContent = files.mainFile || 'main.go';
   if (tabTest) tabTest.textContent = files.testFile || 'main_test.go';
+
+  const isGo = (files.mainFile || '').endsWith('.go');
+  const addTestBtn = document.getElementById('editor-add-test-btn');
+  if (addTestBtn) addTestBtn.style.display = isGo ? '' : 'none';
+  const addTestForm = document.getElementById('add-test-form');
+  if (addTestForm) addTestForm.classList.add('hidden');
 
   const outputBody = document.getElementById('editor-output-body');
   if (outputBody) outputBody.innerHTML = '<span class="text-muted">Click "Run Tests" or press Ctrl+Enter</span>';
@@ -969,6 +981,152 @@ function switchEditorTab(tab) {
   document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
   const activeTab = document.getElementById(tab === 'main' ? 'tab-main' : 'tab-test');
   if (activeTab) activeTab.classList.add('active');
+}
+
+function openInVSCode() {
+  if (!state.editorFilePath) return;
+  const file = state.editorActiveTab === 'main' ? state.editorMainFile : state.editorTestFile;
+  const fullPath = state.editorFilePath + '/' + file;
+  window.open('vscode://file' + fullPath, '_blank');
+}
+
+// --- Add Test Case ---
+function toggleAddTestForm() {
+  var form = document.getElementById('add-test-form');
+  if (!form) return;
+  form.classList.toggle('hidden');
+  if (!form.classList.contains('hidden')) {
+    var nameInput = document.getElementById('test-name-input');
+    if (nameInput) nameInput.focus();
+  }
+}
+
+function detectFuncName() {
+  var content = state.editorMainContent;
+  var funcMatch = content.match(/^func\s+([A-Z]\w+)\(/m);
+  if (funcMatch) return funcMatch[1];
+  var methodMatch = content.match(/^func\s+\([^)]+\)\s+([A-Z]\w+)\(/m);
+  if (methodMatch) return methodMatch[1];
+  return 'FuncName';
+}
+
+function generateTestCode(name, input, expected, assertionType) {
+  var fn = detectFuncName();
+  // Escape quotes/backslashes in test name for Go string literal
+  var safeName = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  switch (assertionType) {
+    case 'equals':
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\tgot := ${fn}(${input})\n\t\tif got != ${expected} {\n\t\t\tt.Errorf("${fn}(${input}) = %v, want %v", got, ${expected})\n\t\t}\n\t})\n`;
+    case 'deep equals':
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\tgot := ${fn}(${input})\n\t\tif !reflect.DeepEqual(got, ${expected}) {\n\t\t\tt.Errorf("${fn}(${input}) = %v, want %v", got, ${expected})\n\t\t}\n\t})\n`;
+    case 'error expected':
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\t_, err := ${fn}(${input})\n\t\tif err == nil {\n\t\t\tt.Error("expected error, got nil")\n\t\t}\n\t})\n`;
+    case 'no error':
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\t_, err := ${fn}(${input})\n\t\tif err != nil {\n\t\t\tt.Errorf("unexpected error: %v", err)\n\t\t}\n\t})\n`;
+    case 'contains':
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\tgot := ${fn}(${input})\n\t\tif !strings.Contains(got, ${expected}) {\n\t\t\tt.Errorf("${fn}(${input}) = %q, want substring %q", got, ${expected})\n\t\t}\n\t})\n`;
+    default:
+      return `\tt.Run("${safeName}", func(t *testing.T) {\n\t\tgot := ${fn}(${input})\n\t\tif got != ${expected} {\n\t\t\tt.Errorf("${fn}(${input}) = %v, want %v", got, ${expected})\n\t\t}\n\t})\n`;
+  }
+}
+
+function ensureImport(content, pkg) {
+  var quoted = '"' + pkg + '"';
+  if (content.includes(quoted)) return content;
+  if (content.includes('import (')) {
+    return content.replace('import (', 'import (\n\t' + quoted);
+  }
+  var singleImportMatch = content.match(/^import ".*"$/m);
+  if (singleImportMatch) {
+    return content.replace(singleImportMatch[0], singleImportMatch[0] + '\nimport ' + quoted);
+  }
+  var pkgMatch = content.match(/^package .+$/m);
+  if (pkgMatch) {
+    return content.replace(pkgMatch[0], pkgMatch[0] + '\nimport ' + quoted);
+  }
+  return content;
+}
+
+function insertTestCase(testContent, testCode) {
+  var testFuncRe = /^func Test\w+\(t \*testing\.T\) \{/gm;
+  var lastMatch = null;
+  var m;
+  while ((m = testFuncRe.exec(testContent)) !== null) {
+    lastMatch = m;
+  }
+
+  if (lastMatch) {
+    // Find matching closing } by tracking brace depth.
+    // Note: this is a simple character scan — braces inside string literals
+    // or comments may cause incorrect depth tracking in rare edge cases.
+    var startIdx = lastMatch.index + lastMatch[0].length;
+    var depth = 1;
+    var i = startIdx;
+    while (i < testContent.length && depth > 0) {
+      if (testContent[i] === '{') depth++;
+      else if (testContent[i] === '}') depth--;
+      i++;
+    }
+    var closingBraceIdx = i - 1;
+    return testContent.slice(0, closingBraceIdx) + testCode + testContent.slice(closingBraceIdx);
+  }
+
+  // No test function found — wrap in TestSolution
+  var wrapper = '\nfunc TestSolution(t *testing.T) {\n' + testCode + '}\n';
+  var importBlockEnd = testContent.lastIndexOf(')');
+  var singleImportMatch = testContent.match(/^import ".*"$/m);
+  var pkgMatch = testContent.match(/^package .+$/m);
+
+  if (importBlockEnd !== -1 && testContent.slice(0, importBlockEnd + 1).includes('import (')) {
+    return testContent.slice(0, importBlockEnd + 1) + wrapper + testContent.slice(importBlockEnd + 1);
+  } else if (singleImportMatch) {
+    var idx = testContent.indexOf(singleImportMatch[0]) + singleImportMatch[0].length;
+    return testContent.slice(0, idx) + wrapper + testContent.slice(idx);
+  } else if (pkgMatch) {
+    var idx2 = testContent.indexOf(pkgMatch[0]) + pkgMatch[0].length;
+    return testContent.slice(0, idx2) + wrapper + testContent.slice(idx2);
+  }
+  return testContent + wrapper;
+}
+
+function addTestCase() {
+  var name = (document.getElementById('test-name-input') || {}).value || '';
+  var input = (document.getElementById('test-input-input') || {}).value || '';
+  var expected = (document.getElementById('test-expected-input') || {}).value || '';
+  var assertionType = (document.getElementById('test-assertion-type') || {}).value || 'equals';
+
+  if (!name.trim()) {
+    alert('Test name is required');
+    return;
+  }
+
+  var testCode = generateTestCode(name.trim(), input, expected, assertionType);
+  var result = insertTestCase(state.editorTestContent, testCode);
+
+  if (assertionType === 'deep equals') result = ensureImport(result, 'reflect');
+  if (assertionType === 'contains') result = ensureImport(result, 'strings');
+
+  state.editorTestContent = result;
+
+  if (state.editorActiveTab === 'test' && state.editorView) {
+    state.editorView.dispatch({
+      changes: { from: 0, to: state.editorView.state.doc.length, insert: state.editorTestContent },
+    });
+  }
+
+  var nameInput = document.getElementById('test-name-input');
+  var inputInput = document.getElementById('test-input-input');
+  var expectedInput = document.getElementById('test-expected-input');
+  var assertionSelect = document.getElementById('test-assertion-type');
+  if (nameInput) nameInput.value = '';
+  if (inputInput) inputInput.value = '';
+  if (expectedInput) expectedInput.value = '';
+  if (assertionSelect) assertionSelect.value = 'equals';
+
+  var form = document.getElementById('add-test-form');
+  if (form) form.classList.add('hidden');
+
+  switchEditorTab('test');
 }
 
 function closeExerciseEditor() {

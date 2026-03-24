@@ -42,6 +42,7 @@ export interface ExerciseFiles {
   language: string;
   mainFile: string;
   testFile: string;
+  filePath: string;
 }
 
 export class ExerciseService {
@@ -292,7 +293,7 @@ export class ExerciseService {
       try { test = readFileSync(join(exercise.file_path, testFile), 'utf-8'); } catch {}
     }
 
-    return { main, test, language: lang, mainFile, testFile };
+    return { main, test, language: lang, mainFile, testFile, filePath: exercise.file_path || '' };
   }
 
   saveExerciseFiles(exerciseId: number, main: string, test: string): void {

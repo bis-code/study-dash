@@ -1208,8 +1208,23 @@ kbd {
   border-bottom-color: var(--accent);
 }
 
-.editor-back-btn {
+.editor-vscode-btn {
   margin-left: auto;
+  padding: 0.3rem 0.75rem;
+  background: none;
+  border: 1px solid #007acc;
+  color: #007acc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.editor-vscode-btn:hover {
+  background: #007acc;
+  color: #fff;
+}
+
+.editor-back-btn {
   padding: 0.3rem 0.75rem;
   background: none;
   border: 1px solid var(--border);
@@ -1281,6 +1296,95 @@ kbd {
   padding: 0.75rem 1rem;
   font-family: monospace;
   font-size: 0.8rem;
+}
+
+/* ===== ADD TEST FORM ===== */
+.editor-add-test-btn {
+  padding: 0.3rem 0.75rem;
+  background: none;
+  border: 1px solid var(--green);
+  color: var(--green);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+}
+
+.editor-add-test-btn:hover {
+  background: var(--green);
+  color: #fff;
+}
+
+.add-test-form {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+.add-test-form.hidden {
+  display: none;
+}
+
+.add-test-form input,
+.add-test-form textarea,
+.add-test-form select {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+
+.add-test-form input:focus,
+.add-test-form textarea:focus,
+.add-test-form select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.add-test-form .form-row {
+  margin-bottom: 8px;
+}
+
+.add-test-form .form-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.add-test-form .form-actions .btn-primary {
+  padding: 0.3rem 0.75rem;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+}
+
+.add-test-form .form-actions .btn-primary:hover {
+  opacity: 0.85;
+}
+
+.add-test-form .form-actions button:not(.btn-primary) {
+  padding: 0.3rem 0.75rem;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+}
+
+.add-test-form .form-actions button:not(.btn-primary):hover {
+  color: var(--text);
+  border-color: var(--text-secondary);
 }
 
 .test-result-row {
