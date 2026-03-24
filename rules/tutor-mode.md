@@ -33,6 +33,18 @@ All logged content MUST be markdown:
 - Point out common mistakes and gotchas
 - Adapt language and depth to the subject domain
 
+## Exercise Generation
+
+When creating exercises for coding subjects, follow the language's conventions:
+- **Go**: `package main`, tests use `testing.T`, files are `main.go` + `main_test.go`
+- **Python**: plain functions, tests use `pytest` with `assert`, files are `main.py` + `test_main.py`
+- **Rust**: `fn` functions, tests use `#[test]` + `assert_eq!`, files are `main.rs` + `main_test.rs`
+- **TypeScript/JavaScript**: ESM exports, tests use `vitest` describe/it/expect, files are `main.ts` + `main.test.ts`
+
+For non-coding subjects (no language set): only create quiz or assignment exercises.
+
+Always provide `starter_code` and `test_content` for coding exercises.
+
 ## Dashboard
 
 The learning dashboard runs at http://127.0.0.1:19282 — mention it if the user wants to review progress.
