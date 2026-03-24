@@ -103,4 +103,70 @@ export function registerExerciseTools(
       return ok(JSON.stringify(exercises, null, 2));
     },
   );
+
+  // 4. learn_submit_quiz
+  server.tool(
+    'learn_submit_quiz',
+    'Submit answers for a quiz exercise and get the score',
+    {
+      exercise_id: z.number().describe('ID of the quiz exercise'),
+      answers: z.string().describe('JSON array of answers — numbers for multiple_choice, booleans for true_false, strings for fill_in'),
+    },
+    async ({ exercise_id, answers }) => {
+      let parsed: (number | boolean | string)[];
+      try {
+        parsed = JSON.parse(answers);
+      } catch {
+        return err('Invalid JSON in answers parameter');
+      }
+      if (!Array.isArray(parsed)) {
+        return err('answers must be a JSON array');
+      }
+      try {
+        const result = svc.submitQuiz(exercise_id, parsed);
+        notify();
+        return ok(JSON.stringify(result, null, 2));
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return err(`Failed to submit quiz: ${msg}`);
+      }
+    },
+  );
+
+  // 5. learn_get_exercise_files
+  server.tool(
+    'learn_get_exercise_files',
+    'Get the source code files for a coding exercise',
+    {
+      exercise_id: z.number().describe('ID of the exercise'),
+    },
+    async ({ exercise_id }) => {
+      const files = svc.getExerciseFiles(exercise_id);
+      if (!files) {
+        return err(`Exercise ${exercise_id} not found`);
+      }
+      return ok(JSON.stringify(files, null, 2));
+    },
+  );
+
+  // 6. learn_save_exercise_files
+  server.tool(
+    'learn_save_exercise_files',
+    'Save updated source code for a coding exercise',
+    {
+      exercise_id: z.number().describe('ID of the exercise'),
+      main: z.string().describe('Main source file content'),
+      test: z.string().describe('Test file content'),
+    },
+    async ({ exercise_id, main, test }) => {
+      try {
+        svc.saveExerciseFiles(exercise_id, main, test);
+        notify();
+        return ok(`Saved files for exercise ${exercise_id}`);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        return err(`Failed to save files: ${msg}`);
+      }
+    },
+  );
 }

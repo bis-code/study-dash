@@ -197,4 +197,18 @@ export function registerCurriculumTools(
       return ok(JSON.stringify(curriculum, null, 2));
     },
   );
+
+  // 8. learn_list_subjects
+  server.tool(
+    'learn_list_subjects',
+    'List all available subjects',
+    {},
+    async () => {
+      const subjects = svc.listSubjects();
+      if (subjects.length === 0) {
+        return ok('No subjects found. Create one with learn_create_subject.');
+      }
+      return ok(JSON.stringify(subjects, null, 2));
+    },
+  );
 }
