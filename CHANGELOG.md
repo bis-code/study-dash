@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.6.0...study-dash-v0.7.0) (2026-03-24)
+
+
+### Features
+
+* **exercises:** add test case form UI and learn skill rules ([5cf4813](https://github.com/bis-code/study-dash/commit/5cf4813559ffb87f42de748832a90bcf1a688a4d))
+
+
+### Bug Fixes
+
+* **dashboard:** add package preamble when generating tests from scratch ([0ee1dd8](https://github.com/bis-code/study-dash/commit/0ee1dd8b1cfb7dc9ef685a1e2a7754c041d13ebb))
+* **dashboard:** fix CodeMirror editor and exercise card UX ([dfd6e75](https://github.com/bis-code/study-dash/commit/dfd6e7598f19d545d8aba8ec1889526116638646))
+
 ## [0.6.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.5.1...study-dash-v0.6.0) (2026-03-24)
 
 
