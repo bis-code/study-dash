@@ -777,8 +777,10 @@ async function runExercise(exerciseId, cardIndex) {
     const res = await fetch(`/api/exercises/${exerciseId}/run`, { method: 'POST' });
     const data = await res.json();
 
-    if (data.results && state.topicExercises[cardIndex]) {
-      state.topicExercises[cardIndex].results = data.results;
+    if (Array.isArray(data) && state.topicExercises[cardIndex]) {
+      state.topicExercises[cardIndex].results = data;
+    } else if (data.error) {
+      console.error('Run exercise error:', data.error);
     }
 
     renderExercisesTab();

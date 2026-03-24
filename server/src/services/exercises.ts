@@ -293,6 +293,17 @@ export class ExerciseService {
       .all(topicId);
   }
 
+  listForTopicWithResults(topicId: number): (Exercise & { results: ExerciseResult[] })[] {
+    const exercises = this.listForTopic(topicId);
+    const getResults = this.db.raw.prepare<[number], ExerciseResult>(
+      'SELECT * FROM exercise_results WHERE exercise_id = ? ORDER BY id ASC'
+    );
+    return exercises.map(ex => ({
+      ...ex,
+      results: getResults.all(ex.id),
+    }));
+  }
+
   getExerciseFiles(exerciseId: number): ExerciseFiles | undefined {
     const exercise = this.db.raw
       .prepare<[number], Exercise>('SELECT * FROM exercises WHERE id = ?')

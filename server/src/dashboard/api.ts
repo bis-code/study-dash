@@ -116,7 +116,7 @@ export function handleTopicExercises(exerciseSvc: ExerciseService) {
       writeError(res, 400, 'Invalid topic ID');
       return;
     }
-    const exercises = exerciseSvc.listForTopic(id);
+    const exercises = exerciseSvc.listForTopicWithResults(id);
     writeJSON(res, exercises);
   };
 }
