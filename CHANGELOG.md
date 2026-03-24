@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.5.0...study-dash-v0.5.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **plugin:** use wrapper script to auto-install native deps before MCP start ([07cfbc9](https://github.com/bis-code/study-dash/commit/07cfbc9541ccca32878efe358302d0869cd202f9))
+
 ## [0.5.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.4.1...study-dash-v0.5.0) (2026-03-24)
 
 
