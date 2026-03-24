@@ -12,6 +12,8 @@ import {
   handleTopicExercises,
   handleTopicResources,
   handleResourceFile,
+  handleExerciseFiles,
+  handleSaveExerciseFiles,
   handleRunTests,
   handleSubmitQuiz,
   handleSearch,
@@ -166,6 +168,18 @@ export class DashboardServer {
     // GET /api/topics/:id
     if (method === 'GET' && /^\/api\/topics\/\d+$/.test(path)) {
       handleTopic(this.curriculumSvc, this.qaSvc, this.resourceSvc)(req, res);
+      return;
+    }
+
+    // GET /api/exercises/:id/files
+    if (method === 'GET' && /^\/api\/exercises\/\d+\/files$/.test(path)) {
+      handleExerciseFiles(this.exerciseSvc)(req, res);
+      return;
+    }
+
+    // POST /api/exercises/:id/files
+    if (method === 'POST' && /^\/api\/exercises\/\d+\/files$/.test(path)) {
+      handleSaveExerciseFiles(this.exerciseSvc)(req, res);
       return;
     }
 

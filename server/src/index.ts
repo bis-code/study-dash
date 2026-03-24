@@ -25,6 +25,11 @@ const curriculumSvc = new CurriculumService(db);
 const qaSvc = new QAService(db);
 const vizSvc = new VizService(db);
 const exerciseSvc = new ExerciseService(db, fileStore);
+// Migrate legacy .txt exercise files to correct extensions
+const migrated = exerciseSvc.migrateFileExtensions();
+if (migrated > 0) {
+  console.error(`Migrated ${migrated} exercise file(s) to correct extensions`);
+}
 const resourceSvc = new ResourceService(db);
 
 const port = Number(db.getSetting('dashboard_port') ?? '19282');

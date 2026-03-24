@@ -178,6 +178,44 @@ export function handleSearch(qaSvc: QAService) {
   };
 }
 
+export function handleExerciseFiles(exerciseSvc: ExerciseService) {
+  return (req: IncomingMessage, res: ServerResponse): void => {
+    const id = extractId(req.url ?? '', '/api/exercises/');
+    if (id === null) {
+      writeError(res, 400, 'Invalid exercise ID');
+      return;
+    }
+    const files = exerciseSvc.getExerciseFiles(id);
+    if (!files) {
+      writeError(res, 404, 'Exercise not found');
+      return;
+    }
+    writeJSON(res, files);
+  };
+}
+
+export function handleSaveExerciseFiles(exerciseSvc: ExerciseService) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    const id = extractId(req.url ?? '', '/api/exercises/');
+    if (id === null) {
+      writeError(res, 400, 'Invalid exercise ID');
+      return;
+    }
+    try {
+      const body = (await parseBody(req)) as { main?: string; test?: string };
+      if (typeof body?.main !== 'string' || typeof body?.test !== 'string') {
+        writeError(res, 400, 'Request body must have "main" and "test" strings');
+        return;
+      }
+      exerciseSvc.saveExerciseFiles(id, body.main, body.test);
+      writeJSON(res, { ok: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      writeError(res, 500, msg);
+    }
+  };
+}
+
 export function handleResourceFile(resourceSvc: ResourceService) {
   return (req: IncomingMessage, res: ServerResponse): void => {
     const id = extractId(req.url ?? '', '/api/resources/');
