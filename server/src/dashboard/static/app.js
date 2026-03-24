@@ -635,9 +635,10 @@ function renderExercisesTab() {
         quiz = typeof ex.quiz_json === 'string' ? JSON.parse(ex.quiz_json) : ex.quiz_json;
       } catch { quiz = null; }
 
-      if (quiz && Array.isArray(quiz)) {
+      const questions = Array.isArray(quiz) ? quiz : (quiz && Array.isArray(quiz.questions) ? quiz.questions : null);
+      if (questions) {
         detailHtml += `<h4>Questions</h4>`;
-        detailHtml += quiz.map((q, qi) => `
+        detailHtml += questions.map((q, qi) => `
           <div class="quiz-question" data-exercise="${i}" data-question="${qi}">
             <p>${marked.parse(q.question || q.text || '')}</p>
             ${(q.options || q.choices || []).map((opt, oi) => `
@@ -746,11 +747,10 @@ async function submitQuiz(exerciseId, cardIndex) {
       data.results.forEach((r, i) => {
         const questionEl = card.querySelectorAll('.quiz-question')[i];
         if (!questionEl) return;
-        questionEl.querySelectorAll('.quiz-option').forEach((opt, oi) => {
-          opt.classList.remove('selected');
-          if (oi === r.correct_index) opt.classList.add('correct');
-          else if (oi === answers[i] && !r.passed) opt.classList.add('incorrect');
-        });
+        const selectedOpt = questionEl.querySelector('.quiz-option.selected');
+        if (selectedOpt) {
+          selectedOpt.classList.add(r.passed ? 'correct' : 'incorrect');
+        }
       });
     }
 
@@ -759,7 +759,8 @@ async function submitQuiz(exerciseId, cardIndex) {
       if (actionsEl) {
         const scoreDiv = document.createElement('div');
         scoreDiv.style.cssText = `margin-top:8px;font-size:14px;font-weight:600;color:${data.passed ? 'var(--green)' : 'var(--yellow)'}`;
-        scoreDiv.textContent = `Score: ${data.score}/${data.total}${data.passed ? ' - Passed!' : ''}`;
+        const correct = data.results ? data.results.filter(r => r.passed).length : 0;
+        scoreDiv.textContent = `Score: ${correct}/${data.total}${data.passed ? ' — Passed!' : ' — Try again'}`;
         actionsEl.appendChild(scoreDiv);
       }
     }
