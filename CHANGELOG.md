@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.3.1...study-dash-v0.4.0) (2026-03-24)
+
+
+### Features
+
+* **dashboard:** add PDF file proxy endpoint ([50be253](https://github.com/bis-code/study-dash/commit/50be25340745797e11e29fb88485efee3552958e))
+* **dashboard:** inline PDF viewer with lazy-loading ([2001c76](https://github.com/bis-code/study-dash/commit/2001c761b5aeb4684cd5e9864ef62acefd0258be))
+
 ## [0.3.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.3.0...study-dash-v0.3.1) (2026-03-24)
 
 
