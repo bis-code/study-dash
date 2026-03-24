@@ -356,6 +356,11 @@ export class ExerciseService {
     return migrated;
   }
 
+  getSubjectLanguage(topicId: number): string {
+    const subject = this.getSubjectForTopic(topicId);
+    return subject?.language ?? '';
+  }
+
   private getSubjectForTopic(topicId: number): Subject | undefined {
     return this.db.raw
       .prepare<[number], Subject>(
