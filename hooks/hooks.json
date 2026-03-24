@@ -1,12 +1,5 @@
 {
   "hooks": {
-    "SessionStart": [{
-      "matcher": "",
-      "hooks": [{
-        "type": "command",
-        "command": "test -d \"${CLAUDE_PLUGIN_ROOT}/server/node_modules/better-sqlite3\" || npm install --prefix \"${CLAUDE_PLUGIN_ROOT}/server\" --silent 2>&1"
-      }]
-    }],
     "PostToolUse": [
       {
         "matcher": "learn_mark_done",
