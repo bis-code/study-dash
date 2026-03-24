@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { readFileSync, existsSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { Database } from '../storage/db.js';
 import { FileStore } from '../storage/files.js';
@@ -46,6 +48,14 @@ interface QuizSubmitResult {
   total: number;
   passed: boolean;
   results: Array<{ test_name: string; passed: boolean; output: string }>;
+}
+
+export interface ExerciseFiles {
+  main: string;
+  test: string;
+  language: string;
+  mainFile: string;
+  testFile: string;
 }
 
 export class ExerciseService {
@@ -275,6 +285,82 @@ export class ExerciseService {
         'SELECT * FROM exercises WHERE topic_id = ? ORDER BY created_at ASC, id ASC',
       )
       .all(topicId);
+  }
+
+  getExerciseFiles(exerciseId: number): ExerciseFiles | undefined {
+    const exercise = this.db.raw
+      .prepare<[number], Exercise>('SELECT * FROM exercises WHERE id = ?')
+      .get(exerciseId);
+    if (!exercise) return undefined;
+
+    const subject = this.getSubjectForTopic(exercise.topic_id);
+    const lang = subject?.language.toLowerCase() ?? '';
+    const ext = extensionForLanguage(lang);
+    const mainFile = `main${ext}`;
+    const testFile = `main_test${ext}`;
+
+    let main = '';
+    let test = '';
+    if (exercise.file_path) {
+      try { main = readFileSync(join(exercise.file_path, mainFile), 'utf-8'); } catch {}
+      try { test = readFileSync(join(exercise.file_path, testFile), 'utf-8'); } catch {}
+    }
+
+    return { main, test, language: lang, mainFile, testFile };
+  }
+
+  saveExerciseFiles(exerciseId: number, main: string, test: string): void {
+    const exercise = this.db.raw
+      .prepare<[number], Exercise>('SELECT * FROM exercises WHERE id = ?')
+      .get(exerciseId);
+    if (!exercise) throw new Error(`Exercise ${exerciseId} not found`);
+
+    const subject = this.getSubjectForTopic(exercise.topic_id);
+    if (!subject) throw new Error(`No subject found for exercise ${exerciseId}`);
+
+    const lang = subject.language.toLowerCase();
+    const ext = extensionForLanguage(lang);
+
+    let filePath = exercise.file_path;
+    if (!filePath) {
+      const exerciseSlug = slugify(exercise.title);
+      filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, {});
+      this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
+    }
+
+    writeFileSync(join(filePath, `main${ext}`), main, 'utf-8');
+    writeFileSync(join(filePath, `main_test${ext}`), test, 'utf-8');
+  }
+
+  migrateFileExtensions(): number {
+    const exercises = this.db.raw
+      .prepare<[], Exercise>("SELECT * FROM exercises WHERE file_path != '' AND type IN ('coding', 'project')")
+      .all();
+
+    let migrated = 0;
+    for (const exercise of exercises) {
+      const subject = this.getSubjectForTopic(exercise.topic_id);
+      if (!subject) continue;
+
+      const ext = extensionForLanguage(subject.language.toLowerCase());
+      if (ext === '.txt') continue;
+
+      const dir = exercise.file_path;
+      const mainTxt = join(dir, 'main.txt');
+      const testTxt = join(dir, 'main_test.txt');
+      const mainTarget = join(dir, `main${ext}`);
+      const testTarget = join(dir, `main_test${ext}`);
+
+      if (existsSync(mainTxt) && !existsSync(mainTarget)) {
+        renameSync(mainTxt, mainTarget);
+        migrated++;
+      }
+      if (existsSync(testTxt) && !existsSync(testTarget)) {
+        renameSync(testTxt, testTarget);
+        migrated++;
+      }
+    }
+    return migrated;
   }
 
   private getSubjectForTopic(topicId: number): Subject | undefined {

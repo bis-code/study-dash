@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database } from '../../src/storage/db.js';
@@ -232,6 +232,94 @@ describe('ExerciseService', () => {
 
     const readme = readFileSync(join(exercise.file_path, 'README.md'), 'utf-8');
     expect(readme).toContain('Write hello world');
+  });
+
+  it('getExerciseFiles — returns file contents and metadata for a coding exercise', () => {
+    const exercise = svc.createExercise(topicId, {
+      title: 'File Reader Test',
+      type: 'coding',
+      description: 'Test reading files',
+      starter_code: 'package main\n\nfunc Hello() string { return "hello" }',
+      test_content: 'package main\n\nimport "testing"\n\nfunc TestHello(t *testing.T) {}',
+    });
+
+    const files = svc.getExerciseFiles(exercise.id);
+    expect(files).toBeDefined();
+    expect(files!.main).toContain('func Hello()');
+    expect(files!.test).toContain('TestHello');
+    expect(files!.language).toBe('go');
+    expect(files!.mainFile).toBe('main.go');
+    expect(files!.testFile).toBe('main_test.go');
+  });
+
+  it('getExerciseFiles — returns empty strings when files do not exist on disk', () => {
+    const exercise = svc.createExercise(topicId, {
+      title: 'No Files',
+      type: 'coding',
+      description: 'No starter code',
+    });
+    const files = svc.getExerciseFiles(exercise.id);
+    expect(files).toBeDefined();
+    expect(files!.main).toBe('');
+    expect(files!.test).toBe('');
+  });
+
+  it('getExerciseFiles — returns undefined for non-existent exercise', () => {
+    expect(svc.getExerciseFiles(99999)).toBeUndefined();
+  });
+
+  it('saveExerciseFiles — writes content to disk files', () => {
+    const exercise = svc.createExercise(topicId, {
+      title: 'Save Test',
+      type: 'coding',
+      description: 'Test saving files',
+      starter_code: 'package main',
+      test_content: 'package main',
+    });
+
+    svc.saveExerciseFiles(exercise.id, 'package main\n\nfunc Updated() {}', 'package main\n\nfunc TestUpdated(t *testing.T) {}');
+
+    const files = svc.getExerciseFiles(exercise.id);
+    expect(files!.main).toContain('func Updated()');
+    expect(files!.test).toContain('TestUpdated');
+  });
+
+  it('saveExerciseFiles — creates directory for exercise without file_path', () => {
+    const exercise = svc.createExercise(topicId, {
+      title: 'No Path Exercise',
+      type: 'coding',
+      description: 'Has no file_path initially',
+    });
+    expect(exercise.file_path).toBe('');
+
+    svc.saveExerciseFiles(exercise.id, 'package main\n\nfunc New() {}', 'package main\n\nfunc TestNew(t *testing.T) {}');
+
+    const files = svc.getExerciseFiles(exercise.id);
+    expect(files!.main).toContain('func New()');
+
+    const updated = svc.listForTopic(topicId).find(e => e.id === exercise.id);
+    expect(updated!.file_path).toBeTruthy();
+  });
+
+  it('migrateFileExtensions — renames .txt files to correct language extension', () => {
+    const exerciseSlug = 'migrate-test';
+    const dir = fileStore.writeExerciseFiles('go', exerciseSlug, {
+      'main.txt': 'package main\n\nfunc Migrate() {}',
+      'main_test.txt': 'package main\n\nimport "testing"\n\nfunc TestMigrate(t *testing.T) {}',
+      'README.md': '# Migrate Test',
+    });
+
+    db.raw.prepare(
+      'INSERT INTO exercises (topic_id, title, type, description, file_path) VALUES (?, ?, ?, ?, ?)'
+    ).run(topicId, 'Migrate Test', 'coding', 'Test migration', dir);
+
+    const count = svc.migrateFileExtensions();
+    expect(count).toBe(2);
+    expect(existsSync(join(dir, 'main.go'))).toBe(true);
+    expect(existsSync(join(dir, 'main_test.go'))).toBe(true);
+    expect(existsSync(join(dir, 'main.txt'))).toBe(false);
+    expect(existsSync(join(dir, 'main_test.txt'))).toBe(false);
+    expect(existsSync(join(dir, 'README.md'))).toBe(true);
   });
 
   it('createExercise — language with mixed case: writes files with correct extension', () => {
