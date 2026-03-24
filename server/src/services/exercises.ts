@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { Database } from '../storage/db.js';
 import { FileStore } from '../storage/files.js';
 import type { Exercise, ExerciseResult, QuizPayload, Subject } from '../types.js';
+import { getExtension, getTestCommand, getScaffoldFiles, getFileNames } from '../languages.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -15,21 +16,6 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-function extensionForLanguage(language: string): string {
-  switch (language) {
-    case 'go':
-      return '.go';
-    case 'python':
-      return '.py';
-    case 'rust':
-      return '.rs';
-    case 'javascript':
-    case 'typescript':
-      return '.ts';
-    default:
-      return '.txt';
-  }
-}
 
 interface CreateExerciseData {
   title: string;
@@ -95,29 +81,21 @@ export class ExerciseService {
     if ((type === 'coding' || type === 'project') && (starter_code || test_content)) {
       const subject = this.getSubjectForTopic(topicId);
       if (subject) {
+        const lang = subject.language.toLowerCase();
         const exerciseSlug = slugify(title);
-        const ext = extensionForLanguage(subject.language.toLowerCase());
+        const { mainFile, testFile } = getFileNames(lang);
 
         const files: Record<string, string> = {};
-        if (starter_code) {
-          files[`main${ext}`] = starter_code;
-        }
-        if (test_content) {
-          files[`main_test${ext}`] = test_content;
-        }
+        if (starter_code) files[mainFile] = starter_code;
+        if (test_content) files[testFile] = test_content;
         files['README.md'] = `# ${title}\n\n${description}`;
 
-        // Add go.mod for Go exercises so `go test` works
-        if (subject.language.toLowerCase() === 'go') {
-          const moduleName = `exercises/${subject.slug}/${exerciseSlug}`;
-          files['go.mod'] = `module ${moduleName}\n\ngo 1.21\n`;
-        }
+        // Add scaffold files (go.mod, Cargo.toml, etc.)
+        const scaffold = getScaffoldFiles(lang, subject.slug, exerciseSlug);
+        Object.assign(files, scaffold);
 
         const filePath = this.fileStore.writeExerciseFiles(subject.slug, exerciseSlug, files);
-
-        this.db.raw
-          .prepare('UPDATE exercises SET file_path = ? WHERE id = ?')
-          .run(filePath, exerciseId);
+        this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
       }
     }
 
@@ -137,15 +115,8 @@ export class ExerciseService {
     const subject = this.getSubjectForTopic(exercise.topic_id);
     if (!subject) throw new Error(`No subject found for exercise ${exerciseId}`);
 
-    const commandMap: Record<string, { command: string; args: string[] }> = {
-      go: { command: 'go', args: ['test', '-json', '-count=1', './...'] },
-      python: { command: 'python3', args: ['-m', 'pytest', '--tb=short', '-q', '.'] },
-      rust: { command: 'cargo', args: ['test'] },
-      javascript: { command: 'npx', args: ['vitest', 'run'] },
-      typescript: { command: 'npx', args: ['vitest', 'run'] },
-    };
-
-    const config = commandMap[subject.language.toLowerCase()];
+    const lang = subject.language.toLowerCase();
+    const config = getTestCommand(lang);
     if (!config) throw new Error(`Unsupported language: ${subject.language}`);
 
     let stdout = '';
@@ -312,9 +283,7 @@ export class ExerciseService {
 
     const subject = this.getSubjectForTopic(exercise.topic_id);
     const lang = subject?.language.toLowerCase() ?? '';
-    const ext = extensionForLanguage(lang);
-    const mainFile = `main${ext}`;
-    const testFile = `main_test${ext}`;
+    const { mainFile, testFile } = getFileNames(lang);
 
     let main = '';
     let test = '';
@@ -336,7 +305,7 @@ export class ExerciseService {
     if (!subject) throw new Error(`No subject found for exercise ${exerciseId}`);
 
     const lang = subject.language.toLowerCase();
-    const ext = extensionForLanguage(lang);
+    const { mainFile, testFile } = getFileNames(lang);
 
     let filePath = exercise.file_path;
     if (!filePath) {
@@ -345,16 +314,15 @@ export class ExerciseService {
       this.db.raw.prepare('UPDATE exercises SET file_path = ? WHERE id = ?').run(filePath, exerciseId);
     }
 
-    if (lang === 'go') {
-      const goModPath = join(filePath, 'go.mod');
-      if (!existsSync(goModPath)) {
-        const exerciseSlug = slugify(exercise.title);
-        writeFileSync(goModPath, `module exercises/${subject.slug}/${exerciseSlug}\n\ngo 1.21\n`, 'utf-8');
-      }
+    // Add scaffold files if missing
+    const scaffold = getScaffoldFiles(lang, subject.slug, slugify(exercise.title));
+    for (const [name, content] of Object.entries(scaffold)) {
+      const p = join(filePath, name);
+      if (!existsSync(p)) writeFileSync(p, content, 'utf-8');
     }
 
-    writeFileSync(join(filePath, `main${ext}`), main, 'utf-8');
-    writeFileSync(join(filePath, `main_test${ext}`), test, 'utf-8');
+    writeFileSync(join(filePath, mainFile), main, 'utf-8');
+    writeFileSync(join(filePath, testFile), test, 'utf-8');
   }
 
   migrateFileExtensions(): number {
@@ -367,7 +335,7 @@ export class ExerciseService {
       const subject = this.getSubjectForTopic(exercise.topic_id);
       if (!subject) continue;
 
-      const ext = extensionForLanguage(subject.language.toLowerCase());
+      const ext = getExtension(subject.language.toLowerCase());
       if (ext === '.txt') continue;
 
       const dir = exercise.file_path;
@@ -386,6 +354,11 @@ export class ExerciseService {
       }
     }
     return migrated;
+  }
+
+  getSubjectLanguage(topicId: number): string {
+    const subject = this.getSubjectForTopic(topicId);
+    return subject?.language ?? '';
   }
 
   private getSubjectForTopic(topicId: number): Subject | undefined {

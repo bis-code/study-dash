@@ -5,7 +5,7 @@
         "matcher": "learn_mark_done",
         "hooks": [{
           "type": "prompt",
-          "prompt": "The user just completed a topic. Generate 2-3 exercises for this topic using learn_create_exercise. Include at least one coding exercise and one quiz. Match the difficulty to the topic content."
+          "prompt": "The user just completed a topic. Generate 2-3 exercises for this topic using learn_create_exercise. If the subject has a programming language, include at least one coding exercise (with starter_code and test_content following the language's conventions) and one quiz. If the subject has no language, create only quiz or assignment exercises. Match the difficulty to the topic content."
         }]
       },
       {

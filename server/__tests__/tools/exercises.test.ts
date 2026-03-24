@@ -7,6 +7,7 @@ import { FileStore } from '../../src/storage/files.js';
 import { CurriculumService } from '../../src/services/curriculum.js';
 import { ExerciseService } from '../../src/services/exercises.js';
 import type { QuizPayload } from '../../src/types.js';
+import { isLanguageSupported } from '../../src/languages.js';
 
 describe('Exercise MCP tool backing methods', () => {
   let db: Database;
@@ -64,5 +65,39 @@ describe('Exercise MCP tool backing methods', () => {
     expect(files).toBeDefined();
     expect(files!.main).toContain('Updated');
     expect(files!.test).toContain('TestUpdated');
+  });
+
+  it('getSubjectLanguage — returns empty string for non-coding subject', () => {
+    const subject = curriculum.createSubject('History', '', 'manual');
+    curriculum.importCurriculum(subject.id, [
+      { name: 'Ancient', description: '', topics: [{ name: 'Egypt', description: '' }] },
+    ]);
+    const histTopicId = curriculum.getCurriculum(subject.id)[0].topics[0].id;
+
+    const lang = svc.getSubjectLanguage(histTopicId);
+    expect(lang).toBe('');
+    expect(isLanguageSupported(lang)).toBe(false);
+  });
+
+  it('getSubjectLanguage — returns language for coding subject', () => {
+    const lang = svc.getSubjectLanguage(topicId);
+    expect(lang).toBe('go');
+    expect(isLanguageSupported(lang)).toBe(true);
+  });
+
+  it('createExercise — quiz works for non-coding subject', () => {
+    const subject = curriculum.createSubject('History', '', 'manual');
+    curriculum.importCurriculum(subject.id, [
+      { name: 'Ancient', description: '', topics: [{ name: 'Egypt', description: '' }] },
+    ]);
+    const histTopicId = curriculum.getCurriculum(subject.id)[0].topics[0].id;
+
+    const quiz = svc.createExercise(histTopicId, {
+      title: 'History Quiz',
+      type: 'quiz',
+      description: 'Test',
+      quiz_json: JSON.stringify({ questions: [] }),
+    });
+    expect(quiz.id).toBeGreaterThan(0);
   });
 });

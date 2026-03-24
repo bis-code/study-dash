@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ExerciseService } from '../services/exercises.js';
 import type { SessionState } from '../types.js';
+import { isLanguageSupported, SUPPORTED_LANGUAGES } from '../languages.js';
 
 function getSession(sessions: Map<string, SessionState>, sessionId?: string): SessionState {
   const key = sessionId || '_default';
@@ -48,6 +49,17 @@ export function registerExerciseTools(
       const session = getSession(sessions, session_id);
       if (session.topicId === null) {
         return err('No active topic. Use learn_set_topic first.');
+      }
+
+      // Gate coding/project exercises for subjects without a language
+      if (type === 'coding' || type === 'project') {
+        const lang = svc.getSubjectLanguage(session.topicId);
+        if (!lang) {
+          return err('Coding/project exercises require a subject with a programming language. Use quiz or assignment type instead.');
+        }
+        if (!isLanguageSupported(lang)) {
+          return err(`Unsupported language: "${lang}". Supported: ${SUPPORTED_LANGUAGES.join(', ')}`);
+        }
       }
 
       const exercise = svc.createExercise(session.topicId, {

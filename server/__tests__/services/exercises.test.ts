@@ -338,6 +338,27 @@ describe('ExerciseService', () => {
     expect(goMod).toContain('go 1.21');
   });
 
+  it('createExercise — Python coding type: uses test_main.py naming convention', () => {
+    const subject = curriculum.createSubject('Python Basics', 'python', 'manual');
+    curriculum.importCurriculum(subject.id, [
+      { name: 'P1', description: '', topics: [{ name: 'Functions', description: '' }] },
+    ]);
+    const pyTopicId = curriculum.getCurriculum(subject.id)[0].topics[0].id;
+
+    const exercise = svc.createExercise(pyTopicId, {
+      title: 'Add Numbers',
+      type: 'coding',
+      description: 'Add two numbers',
+      starter_code: 'def add(a, b):\n    pass',
+      test_content: 'from main import add\n\ndef test_add():\n    assert add(1, 2) == 3',
+    });
+
+    expect(exercise.file_path).toBeTruthy();
+    expect(existsSync(join(exercise.file_path, 'main.py'))).toBe(true);
+    expect(existsSync(join(exercise.file_path, 'test_main.py'))).toBe(true);
+    expect(existsSync(join(exercise.file_path, 'main_test.py'))).toBe(false);
+  });
+
   it('createExercise — language with mixed case: writes files with correct extension', () => {
     // Regression: subjects created with "Go" (capitalized) caused .txt extensions
     const subject = curriculum.createSubject('Python Prep', 'Python', 'manual');
@@ -361,7 +382,7 @@ describe('ExerciseService', () => {
 
     expect(exercise.file_path).toBeTruthy();
     expect(existsSync(join(exercise.file_path, 'main.py'))).toBe(true);
-    expect(existsSync(join(exercise.file_path, 'main_test.py'))).toBe(true);
+    expect(existsSync(join(exercise.file_path, 'test_main.py'))).toBe(true);
     // Should NOT create .txt files
     expect(existsSync(join(exercise.file_path, 'main.txt'))).toBe(false);
   });
