@@ -1072,7 +1072,10 @@ function insertTestCase(testContent, testCode) {
   }
 
   // No test function found — wrap in TestSolution
-  var wrapper = '\nfunc TestSolution(t *testing.T) {\n' + testCode + '}\n';
+  // If no package line exists, add one with testing import
+  var hasPkg = /^package .+$/m.test(testContent);
+  var preamble = hasPkg ? '' : 'package main\n\nimport "testing"\n';
+  var wrapper = preamble + '\nfunc TestSolution(t *testing.T) {\n' + testCode + '}\n';
   var importBlockEnd = testContent.lastIndexOf(')');
   var singleImportMatch = testContent.match(/^import ".*"$/m);
   var pkgMatch = testContent.match(/^package .+$/m);
