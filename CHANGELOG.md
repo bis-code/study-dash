@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1](https://github.com/bis-code/study-dash/compare/study-dash-v0.4.0...study-dash-v0.4.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* **ci:** grant contents:write permission for bundle commit ([a7e4373](https://github.com/bis-code/study-dash/commit/a7e43733073bd195e658911a466c6d37faf6aa88))
+* **ci:** grant contents:write permission for bundle commit ([d3a0795](https://github.com/bis-code/study-dash/commit/d3a0795c2c11e32ecd20d1a76c700f2802277153))
+* **ci:** replace bundle auto-commit with validation check ([8fcbd41](https://github.com/bis-code/study-dash/commit/8fcbd415c25d0836e69113e2ff7919898e44d40c))
+* **plugin:** auto-install native deps on first session ([a55c5ba](https://github.com/bis-code/study-dash/commit/a55c5bad9d9ebf37b38f186cd124b9bd8d52e4e5))
+
 ## [0.4.0](https://github.com/bis-code/study-dash/compare/study-dash-v0.3.1...study-dash-v0.4.0) (2026-03-24)
 
 
