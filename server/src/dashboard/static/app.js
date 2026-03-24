@@ -859,25 +859,34 @@ function renderResourcesTab() {
 }
 
 // --- CodeMirror Lazy Loading ---
-async function loadCodeMirror() {
-  if (window._cm) return window._cm;
+async function loadCodeMirror(language) {
+  if (!window._cmBase) {
+    const [
+      { EditorView, basicSetup },
+      { EditorState },
+      { oneDark },
+      { keymap },
+    ] = await Promise.all([
+      import('https://esm.sh/codemirror@6.65.7'),
+      import('https://esm.sh/@codemirror/state@6.5.2'),
+      import('https://esm.sh/@codemirror/theme-one-dark@6.1.2'),
+      import('https://esm.sh/@codemirror/view@6.36.5'),
+    ]);
+    window._cmBase = { EditorView, EditorState, basicSetup, oneDark, keymap };
+  }
 
-  const [
-    { EditorView, basicSetup },
-    { EditorState },
-    { go },
-    { oneDark },
-    { keymap },
-  ] = await Promise.all([
-    import('https://esm.sh/codemirror@6.65.7'),
-    import('https://esm.sh/@codemirror/state@6.5.2'),
-    import('https://esm.sh/@codemirror/lang-go@6.0.1'),
-    import('https://esm.sh/@codemirror/theme-one-dark@6.1.2'),
-    import('https://esm.sh/@codemirror/view@6.36.5'),
-  ]);
+  const langMap = {
+    go: () => import('https://esm.sh/@codemirror/lang-go@6.0.1').then(m => m.go()),
+    python: () => import('https://esm.sh/@codemirror/lang-python@6.1.6').then(m => m.python()),
+    rust: () => import('https://esm.sh/@codemirror/lang-rust@6.0.1').then(m => m.rust()),
+    javascript: () => import('https://esm.sh/@codemirror/lang-javascript@6.2.2').then(m => m.javascript({ typescript: true })),
+    typescript: () => import('https://esm.sh/@codemirror/lang-javascript@6.2.2').then(m => m.javascript({ typescript: true })),
+  };
 
-  window._cm = { EditorView, EditorState, basicSetup, go, oneDark, keymap };
-  return window._cm;
+  const langFn = langMap[language] || langMap['go'];
+  const langExt = await langFn();
+
+  return { ...window._cmBase, langExt };
 }
 
 // --- Exercise Editor ---
@@ -917,7 +926,7 @@ async function openExerciseEditor(exerciseId) {
 
   showPage('exercise-editor');
 
-  const cm = await loadCodeMirror();
+  const cm = await loadCodeMirror(files.language || 'go');
   const container = document.getElementById('editor-container');
   if (!container) return;
   container.innerHTML = '';
@@ -930,7 +939,7 @@ async function openExerciseEditor(exerciseId) {
   state.editorView = new cm.EditorView({
     state: cm.EditorState.create({
       doc: state.editorMainContent,
-      extensions: [cm.basicSetup, cm.go(), cm.oneDark, runTestsKeymap],
+      extensions: [cm.basicSetup, cm.langExt, cm.oneDark, runTestsKeymap],
     }),
     parent: container,
   });
