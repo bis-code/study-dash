@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { CurriculumService } from '../services/curriculum.js';
 import type { QAService } from '../services/qa.js';
 import type { VizService } from '../services/viz.js';
@@ -172,6 +174,56 @@ export function handleSearch(qaSvc: QAService) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       writeError(res, 500, msg);
+    }
+  };
+}
+
+export function handleResourceFile(resourceSvc: ResourceService) {
+  return (req: IncomingMessage, res: ServerResponse): void => {
+    const id = extractId(req.url ?? '', '/api/resources/');
+    if (id === null) {
+      writeError(res, 400, 'Invalid resource ID');
+      return;
+    }
+
+    const resource = resourceSvc.getById(id);
+    if (!resource) {
+      writeError(res, 404, 'Resource not found');
+      return;
+    }
+
+    // Only serve file:// URLs — never proxy remote URLs
+    if (!resource.url.startsWith('file://')) {
+      writeError(res, 400, 'Resource is not a local file');
+      return;
+    }
+
+    const filePath = decodeURIComponent(new URL(resource.url).pathname);
+    const ext = path.extname(filePath).toLowerCase();
+
+    const mimeTypes: Record<string, string> = {
+      '.pdf': 'application/pdf',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+    };
+
+    const contentType = mimeTypes[ext];
+    if (!contentType) {
+      writeError(res, 400, 'Unsupported file type');
+      return;
+    }
+
+    try {
+      const stat = fs.statSync(filePath);
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stat.size,
+        'Cache-Control': 'private, max-age=3600',
+      });
+      fs.createReadStream(filePath).pipe(res);
+    } catch {
+      writeError(res, 404, 'File not found on disk');
     }
   };
 }

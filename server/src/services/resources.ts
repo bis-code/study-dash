@@ -10,6 +10,10 @@ interface ImportResourceInput {
 export class ResourceService {
   constructor(private db: Database) {}
 
+  getById(id: number): Resource | undefined {
+    return this.db.raw.prepare('SELECT * FROM resources WHERE id = ?').get(id) as Resource | undefined;
+  }
+
   addResource(topicId: number, title: string, url: string, source: string = 'manual'): Resource {
     const result = this.db.raw.prepare(
       'INSERT INTO resources (topic_id, title, url, source) VALUES (?, ?, ?, ?)'

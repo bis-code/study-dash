@@ -11,6 +11,7 @@ import {
   handleTopicViz,
   handleTopicExercises,
   handleTopicResources,
+  handleResourceFile,
   handleRunTests,
   handleSubmitQuiz,
   handleSearch,
@@ -135,6 +136,12 @@ export class DashboardServer {
     // GET /api/subjects/:id/phases
     if (method === 'GET' && /^\/api\/subjects\/\d+\/phases$/.test(path)) {
       handlePhases(this.curriculumSvc)(req, res);
+      return;
+    }
+
+    // GET /api/resources/:id/file
+    if (method === 'GET' && /^\/api\/resources\/\d+\/file$/.test(path)) {
+      handleResourceFile(this.resourceSvc)(req, res);
       return;
     }
 
